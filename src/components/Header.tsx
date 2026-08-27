@@ -190,7 +190,7 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex items-center space-x-1 pl-1">
               <a
                 id="header-github-repo-link"
-                href="https://github.com/berkaysert/unishader-studio"
+                href="https://github.com/OtaciMergen/UnityShaderStudio"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center space-x-1.5 px-2.5 py-1.5 bg-[#1E232B] hover:bg-[#282F3A] text-slate-200 rounded-md border border-[#2D343F] hover:border-slate-500 text-xs font-medium transition cursor-pointer shadow-xs"
@@ -266,10 +266,10 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="bg-[#191D24] p-3 rounded-lg border border-[#282E39] flex items-center justify-between gap-3">
               <div className="flex items-center space-x-2">
                 <Github className="w-4 h-4 text-slate-300 shrink-0" />
-                <span className="font-mono text-[11px] text-slate-300">github.com/berkaysert/unishader-studio</span>
+                <span className="font-mono text-[11px] text-slate-300">github.com/OtaciMergen/UnityShaderStudio</span>
               </div>
               <a
-                href="https://github.com/berkaysert/unishader-studio"
+                href="https://github.com/OtaciMergen/UnityShaderStudio"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-semibold flex items-center gap-1 shrink-0 cursor-pointer"
