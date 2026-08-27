@@ -113,4 +113,4 @@ This tool provides side-by-side annotations explaining every token replacement s
 
 ## 📄 License
 
-This project is licensed under the [MIT License](LICENSE). You are free to use, modify, distribute, and integrate the transpiler logic and converted shaders into personal or commercial Unity projects.
+This project is authored by **Berkay Sert** and licensed under the [MIT License](LICENSE). You are free to use, modify, distribute, and integrate the transpiler logic and converted shaders into personal or commercial Unity projects.
