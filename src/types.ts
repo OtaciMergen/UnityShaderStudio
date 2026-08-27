@@ -105,8 +105,20 @@ export interface PerformanceEstimation {
   }>;
 }
 
+export interface ChangedPartItem {
+  id: string;
+  category: 'Function' | 'Type' | 'Texture & Sampler' | 'SRP CBUFFER' | 'Lighting & Math' | 'Pass Structure' | 'Preprocessor & Macro';
+  sourceSnippet: string;
+  convertedSnippet: string;
+  explanation: string;
+  lineNumber?: number;
+}
+
 export interface TranspileResult {
   convertedCode: string;
+  changedCodeOnly: string;
+  changedParts: ChangedPartItem[];
+  changedLineNumbers?: number[];
   pipeline: TargetPipeline;
   unityVersion: UnityVersion;
   properties: ExtractedProperty[];

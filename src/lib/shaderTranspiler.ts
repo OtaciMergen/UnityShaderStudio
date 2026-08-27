@@ -4,9 +4,154 @@ import {
   ExtractedProperty,
   ConversionAnnotation,
   SourceFormat,
+  ChangedPartItem,
 } from '../types';
 import { estimateShaderPerformance } from './performanceEstimator';
 import { formatUnityHlsl } from './shaderFormatter';
+
+/**
+ * Strips all Pass blocks with LightMode or Name = "ShadowCaster"
+ */
+export function stripShadowCasterPasses(code: string): string {
+  let i = 0;
+  let output = '';
+  while (i < code.length) {
+    const match = code.slice(i).match(/^Pass\s*\{/i);
+    if (match) {
+      const passStartIndex = i;
+      let depth = 0;
+      let passEndIndex = -1;
+      for (let j = passStartIndex; j < code.length; j++) {
+        if (code[j] === '{') depth++;
+        else if (code[j] === '}') {
+          depth--;
+          if (depth === 0) {
+            passEndIndex = j + 1;
+            break;
+          }
+        }
+      }
+      if (passEndIndex !== -1) {
+        const passBlock = code.slice(passStartIndex, passEndIndex);
+        if (/["']ShadowCaster["']/i.test(passBlock) || /LightMode\s*=\s*["']ShadowCaster["']/i.test(passBlock)) {
+          // Skip adding this pass to output
+          i = passEndIndex;
+          continue;
+        } else {
+          output += passBlock;
+          i = passEndIndex;
+          continue;
+        }
+      }
+    }
+    output += code[i];
+    i++;
+  }
+  return output;
+}
+
+/**
+ * Extract only the pure converted HLSL logic without surrounding ShaderLab boilerplate
+ */
+export function extractChangedCodeOnly(
+  convertedCode: string,
+  sourceCode: string,
+  cbufferCode: string,
+  annotations: ConversionAnnotation[],
+  options: TranspileOptions
+): string {
+  // If converted code contains HLSLPROGRAM ... ENDHLSL, extract that core block
+  const hlslMatches = Array.from(convertedCode.matchAll(/HLSLPROGRAM([\s\S]*?)ENDHLSL/g));
+  if (hlslMatches.length > 0) {
+    const mainHlsl = hlslMatches[0][1].trim();
+    return `// ============================================================================
+// CONVERTED HLSL LOGIC (Changed Parts Only)
+// Target: ${options.targetPipeline.toUpperCase()} (Unity ${options.unityVersion})
+// ============================================================================
+
+${mainHlsl}`;
+  }
+
+  return convertedCode;
+}
+
+/**
+ * Build structured Changed Parts items list comparing Source vs Converted
+ */
+export function buildChangedPartsList(
+  annotations: ConversionAnnotation[],
+  sourceCode: string,
+  convertedCode: string,
+  properties: ExtractedProperty[],
+  cbufferCode: string,
+  options: TranspileOptions
+): ChangedPartItem[] {
+  const parts: ChangedPartItem[] = [];
+
+  // 1. CBUFFER SRP Batcher Block
+  if (cbufferCode && cbufferCode.trim()) {
+    parts.push({
+      id: 'srp-cbuffer',
+      category: 'SRP CBUFFER',
+      sourceSnippet: properties.map(p => `${p.glslName} (${p.type})`).join('\n') || '// Bare global uniforms',
+      convertedSnippet: cbufferCode.trim(),
+      explanation: 'Packed material properties into UnityPerMaterial constant buffer for SRP Batcher draw-call batching.',
+    });
+  }
+
+  // 2. Texture & Sampler declarations
+  const texDecls = convertedCode.match(/TEXTURE2D\([^)]+\);\s*SAMPLER\([^)]+\);/g);
+  if (texDecls && texDecls.length > 0) {
+    parts.push({
+      id: 'tex-samplers',
+      category: 'Texture & Sampler',
+      sourceSnippet: 'sampler2D / uniform sampler2D',
+      convertedSnippet: texDecls.join('\n'),
+      explanation: 'Separated combined legacy texture samplers into modern Texture2D and SamplerState declarations.',
+    });
+  }
+
+  // 3. Shadow Pass handling
+  if (options.generateShadowCaster === false) {
+    parts.push({
+      id: 'shadow-pass-removed',
+      category: 'Pass Structure',
+      sourceSnippet: 'Pass { ... "ShadowCaster" ... }',
+      convertedSnippet: '// ShadowCaster Pass Excluded / Removed',
+      explanation: 'Removed ShadowCaster pass to reduce vertex shader calculations and minimize shader variant build times.',
+    });
+  } else if (convertedCode.includes('"ShadowCaster"')) {
+    parts.push({
+      id: 'shadow-pass-added',
+      category: 'Pass Structure',
+      sourceSnippet: '// No URP Shadow Pass in source',
+      convertedSnippet: 'Pass { Name "ShadowCaster" Tags { "LightMode" = "ShadowCaster" } ... }',
+      explanation: 'Injected URP ShadowCaster pass with ApplyShadowBias() for real-time directional shadow casting.',
+    });
+  }
+
+  // 4. Map from annotations
+  annotations.forEach((ann, idx) => {
+    let cat: ChangedPartItem['category'] = 'Function';
+    if (ann.category === 'type') cat = 'Type';
+    else if (ann.category === 'texture') cat = 'Texture & Sampler';
+    else if (ann.category === 'buffer') cat = 'SRP CBUFFER';
+    else if (ann.category === 'structure') cat = 'Pass Structure';
+    else if (ann.category === 'coordinate') cat = 'Lighting & Math';
+    else if (ann.category === 'matrix') cat = 'Lighting & Math';
+
+    parts.push({
+      id: `ann-${idx}-${ann.from.slice(0, 20).replace(/[^a-zA-Z0-9]/g, '_')}`,
+      category: cat,
+      sourceSnippet: ann.from,
+      convertedSnippet: ann.to,
+      explanation: ann.explanation,
+      lineNumber: ann.lineNumber,
+    });
+  });
+
+  return parts;
+}
 
 /**
  * Detect if shader code is Unity Built-in CG / ShaderLab
@@ -64,6 +209,10 @@ export function transpileGlslToUnity(
   } catch (fmtErr) {
     console.warn('Auto-format skipped due to parser error:', fmtErr);
   }
+
+  // Populate changedCodeOnly and structured changedParts
+  result.changedCodeOnly = extractChangedCodeOnly(result.convertedCode, rawCode, result.cbufferCode, result.annotations, options);
+  result.changedParts = buildChangedPartsList(result.annotations, rawCode, result.convertedCode, result.properties, result.cbufferCode, options);
 
   // Calculate high-precision performance, SRP Batcher and variant estimation
   result.performance = estimateShaderPerformance(result.convertedCode);
@@ -425,7 +574,15 @@ export function transpileBuiltinToUrp(
   }
 
   // Add missing URP ShadowCaster pass if requested and if not present
-  if (options.generateShadowCaster !== false && converted.includes('SubShader') && !converted.includes('"ShadowCaster"')) {
+  if (options.generateShadowCaster === false) {
+    converted = stripShadowCasterPasses(converted);
+    annotations.push({
+      from: 'ShadowCaster Pass',
+      to: '// Excluded (Shadow Pass Removed)',
+      category: 'structure',
+      explanation: 'ShadowCaster pass removed as requested to streamline shader and reduce variant count.',
+    });
+  } else if (converted.includes('SubShader') && !converted.includes('"ShadowCaster"')) {
     const shadowCasterPass = `
         // --------------------------------------------------
         // URP Shadow Caster Pass (Auto-generated)
@@ -499,6 +656,8 @@ export function transpileBuiltinToUrp(
 
   return {
     convertedCode: converted,
+    changedCodeOnly: '',
+    changedParts: [],
     pipeline: 'urp',
     unityVersion: options.unityVersion,
     properties,
@@ -544,6 +703,53 @@ function convertSurfaceShaderToUrp(
   if (!propsBlock) {
     propsBlock = `        _BaseMap("Albedo", 2D) = "white" {}\n        _BaseColor("Color", Color) = (1,1,1,1)\n        _Metallic("Metallic", Range(0,1)) = 0.0\n        _Smoothness("Smoothness", Range(0,1)) = 0.5`;
   }
+
+  const shadowPass = options.generateShadowCaster !== false ? `
+        // Shadow Caster Pass for URP dynamic shadows
+        Pass
+        {
+            Name "ShadowCaster"
+            Tags { "LightMode" = "ShadowCaster" }
+
+            ZWrite On
+            ZTest LEqual
+            ColorMask 0
+            Cull Back
+
+            HLSLPROGRAM
+            #pragma target 3.5
+            #pragma vertex ShadowPassVertex
+            #pragma fragment ShadowPassFragment
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl"
+
+            struct ShadowAttributes
+            {
+                float4 positionOS : POSITION;
+                float3 normalOS   : NORMAL;
+            };
+
+            struct ShadowVaryings
+            {
+                float4 positionCS : SV_POSITION;
+            };
+
+            ShadowVaryings ShadowPassVertex(ShadowAttributes input)
+            {
+                ShadowVaryings output;
+                float3 positionWS = TransformObjectToWorld(input.positionOS.xyz);
+                float3 normalWS = TransformObjectToWorldNormal(input.normalOS);
+                output.positionCS = TransformWorldToHClip(ApplyShadowBias(positionWS, normalWS, _LightDirection));
+                return output;
+            }
+
+            half4 ShadowPassFragment(ShadowVaryings input) : SV_TARGET
+            {
+                return 0;
+            }
+            ENDHLSL
+        }` : '';
 
   const generatedShader = `Shader "${shaderName}"
 {
@@ -659,58 +865,15 @@ ${textureDecls ? `            ${textureDecls}\n` : '            TEXTURE2D(_BaseM
             }
             ENDHLSL
         }
-
-        // Shadow Caster Pass for URP dynamic shadows
-        Pass
-        {
-            Name "ShadowCaster"
-            Tags { "LightMode" = "ShadowCaster" }
-
-            ZWrite On
-            ZTest LEqual
-            ColorMask 0
-            Cull Back
-
-            HLSLPROGRAM
-            #pragma target 3.5
-            #pragma vertex ShadowPassVertex
-            #pragma fragment ShadowPassFragment
-
-            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
-            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl"
-
-            struct ShadowAttributes
-            {
-                float4 positionOS : POSITION;
-                float3 normalOS   : NORMAL;
-            };
-
-            struct ShadowVaryings
-            {
-                float4 positionCS : SV_POSITION;
-            };
-
-            ShadowVaryings ShadowPassVertex(ShadowAttributes input)
-            {
-                ShadowVaryings output;
-                float3 positionWS = TransformObjectToWorld(input.positionOS.xyz);
-                float3 normalWS = TransformObjectToWorldNormal(input.normalOS);
-                output.positionCS = TransformWorldToHClip(ApplyShadowBias(positionWS, normalWS, _LightDirection));
-                return output;
-            }
-
-            half4 ShadowPassFragment(ShadowVaryings input) : SV_TARGET
-            {
-                return 0;
-            }
-            ENDHLSL
-        }
+${shadowPass}
     }
     FallBack "Hidden/Universal Render Pipeline/FallbackError"
 }`;
 
   return {
     convertedCode: generatedShader,
+    changedCodeOnly: '',
+    changedParts: [],
     pipeline: 'urp',
     unityVersion: options.unityVersion,
     properties,
@@ -872,6 +1035,8 @@ function transpileGlslOrShadertoy(
 
   return {
     convertedCode: finalShaderCode,
+    changedCodeOnly: '',
+    changedParts: [],
     pipeline: options.targetPipeline,
     unityVersion: options.unityVersion,
     properties,
@@ -1237,6 +1402,53 @@ function generateUrpShader(
   // Clean GLSL body into HLSL function
   const processedBody = cleanBodyForFragment(bodyCode, isShadertoy);
 
+  const shadowPass = options.generateShadowCaster !== false ? `
+        // Shadow Caster Pass for dynamic URP shadow rendering
+        Pass
+        {
+            Name "ShadowCaster"
+            Tags { "LightMode" = "ShadowCaster" }
+
+            ZWrite On
+            ZTest LEqual
+            ColorMask 0
+            Cull Back
+
+            HLSLPROGRAM
+            #pragma target 3.5
+            #pragma vertex ShadowPassVertex
+            #pragma fragment ShadowPassFragment
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl"
+
+            struct ShadowAttributes
+            {
+                float4 positionOS   : POSITION;
+                float3 normalOS     : NORMAL;
+            };
+
+            struct ShadowVaryings
+            {
+                float4 positionCS   : SV_POSITION;
+            };
+
+            ShadowVaryings ShadowPassVertex(ShadowAttributes input)
+            {
+                ShadowVaryings output;
+                float3 positionWS = TransformObjectToWorld(input.positionOS.xyz);
+                float3 normalWS = TransformObjectToWorldNormal(input.normalOS);
+                output.positionCS = TransformWorldToHClip(ApplyShadowBias(positionWS, normalWS, _LightDirection));
+                return output;
+            }
+
+            half4 ShadowPassFragment(ShadowVaryings input) : SV_TARGET
+            {
+                return 0;
+            }
+            ENDHLSL
+        }` : '';
+
   return `Shader "${shaderName}"
 {
     Properties
@@ -1325,52 +1537,7 @@ ${texture2DDecls ? `            ${texture2DDecls}\n` : ''}
 
             ENDHLSL
         }
-
-        // Shadow Caster Pass for dynamic URP shadow rendering
-        Pass
-        {
-            Name "ShadowCaster"
-            Tags { "LightMode" = "ShadowCaster" }
-
-            ZWrite On
-            ZTest LEqual
-            ColorMask 0
-            Cull Back
-
-            HLSLPROGRAM
-            #pragma target 3.5
-            #pragma vertex ShadowPassVertex
-            #pragma fragment ShadowPassFragment
-
-            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
-            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl"
-
-            struct Attributes
-            {
-                float4 positionOS   : POSITION;
-                float3 normalOS     : NORMAL;
-            };
-
-            struct Varyings
-            {
-                float4 positionCS   : SV_POSITION;
-            };
-
-            Varyings ShadowPassVertex(Attributes input)
-            {
-                Varyings output;
-                float3 positionWS = TransformObjectToWorld(input.positionOS.xyz);
-                float3 normalWS = TransformObjectToWorldNormal(input.normalOS);
-                output.positionCS = TransformWorldToHClip(ApplyShadowBias(positionWS, normalWS, _LightDirection));
-                return output;
-            }
-
-            half4 ShadowPassFragment(Varyings input) : SV_TARGET
-            {
-                return 0;
-            }
-            ENDHLSL
-        }
+${shadowPass}
     }
     FallBack "Hidden/Universal Render Pipeline/FallbackError"
 }`;
