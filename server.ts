@@ -10,6 +10,25 @@ const PORT = 3000;
 
 app.use(express.json({ limit: "10mb" }));
 
+// Static SEO Endpoints
+app.get("/robots.txt", (_req, res) => {
+  res.type("text/plain");
+  res.send("User-agent: *\nAllow: /\n\nSitemap: /sitemap.xml\n");
+});
+
+app.get("/sitemap.xml", (_req, res) => {
+  res.type("application/xml");
+  res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>/</loc>
+    <lastmod>2026-08-27</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>`);
+});
+
 // API Health Endpoint
 app.get("/api/health", (_req, res) => {
   res.json({

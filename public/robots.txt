@@ -1,0 +1,6 @@
+# Robots.txt for UniShader Studio - Unity SRP Shader Converter
+User-agent: *
+Allow: /
+
+# Sitemaps
+Sitemap: /sitemap.xml

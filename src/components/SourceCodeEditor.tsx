@@ -10,7 +10,9 @@ import {
   Check, 
   Trash2, 
   Hash, 
-  WrapText 
+  WrapText,
+  BookOpen,
+  Sparkles
 } from 'lucide-react';
 
 interface SourceCodeEditorProps {
@@ -18,6 +20,7 @@ interface SourceCodeEditorProps {
   onChange: (value: string) => void;
   placeholder?: string;
   title: string;
+  onOpenSnippetLibrary?: () => void;
 }
 
 export const SourceCodeEditor: React.FC<SourceCodeEditorProps> = ({
@@ -25,6 +28,7 @@ export const SourceCodeEditor: React.FC<SourceCodeEditorProps> = ({
   onChange,
   placeholder,
   title,
+  onOpenSnippetLibrary,
 }) => {
   const [viewMode, setViewMode] = useState<'edit' | 'highlight'>('edit');
   const [copied, setCopied] = useState<boolean>(false);
@@ -63,6 +67,19 @@ export const SourceCodeEditor: React.FC<SourceCodeEditorProps> = ({
         </div>
 
         <div className="flex items-center space-x-1 shrink-0">
+          {/* Snippet Library Trigger Button */}
+          {onOpenSnippetLibrary && (
+            <button
+              id="btn-open-snippet-library-editor"
+              onClick={onOpenSnippetLibrary}
+              className="flex items-center space-x-1 px-2 py-0.5 rounded bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-[11px] font-medium transition cursor-pointer mr-1 shadow-xs"
+              title="Browse, insert, and save GLSL shader snippets (Noise, SDF, Blending, Color math)"
+            >
+              <Sparkles className="w-3 h-3 text-indigo-400" />
+              <span>Snippets</span>
+            </button>
+          )}
+
           {/* Edit / Highlight Toggle */}
           <div className="inline-flex items-center bg-[#0E1013] border border-[#23272F] rounded p-0.5 mr-1">
             <button

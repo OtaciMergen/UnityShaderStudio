@@ -245,3 +245,25 @@ export interface LearningRoadmap {
   }>;
 }
 
+export type SnippetCategory = 
+  | 'noise' 
+  | 'sdf' 
+  | 'blending' 
+  | 'color' 
+  | 'uv_math' 
+  | 'lighting' 
+  | 'custom';
+
+export interface ShaderSnippet {
+  id: string;
+  title: string;
+  category: SnippetCategory;
+  description: string;
+  code: string;
+  tags: string[];
+  isCustom?: boolean;
+  author?: string;
+  createdAt?: string;
+  usageExample?: string;
+}
+

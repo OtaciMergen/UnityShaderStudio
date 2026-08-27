@@ -24,7 +24,9 @@ import {
   ExternalLink,
   Maximize2,
   Columns,
-  Sidebar
+  Sidebar,
+  Compass,
+  Sparkles
 } from 'lucide-react';
 import { 
   TargetPipeline, 
@@ -41,6 +43,7 @@ import { SHADER_PRESETS } from '../data/shaderPresets';
 import { PerformanceImpactEstimator } from './PerformanceImpactEstimator';
 import { HLSLCodeViewer } from './HLSLCodeViewer';
 import { SourceCodeEditor } from './SourceCodeEditor';
+import { ShaderSnippetLibrary } from './ShaderSnippetLibrary';
 import JSZip from 'jszip';
 
 interface ConverterWorkbenchProps {
@@ -88,8 +91,20 @@ export const ConverterWorkbench: React.FC<ConverterWorkbenchProps> = ({
   const [viewMode, setViewMode] = useState<'code' | 'performance' | 'properties' | 'annotations'>('code');
   const [layoutMode, setLayoutMode] = useState<'split' | 'wide' | 'full'>('split');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSnippetLibraryOpen, setIsSnippetLibraryOpen] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Insert code from GLSL snippet library
+  const handleInsertSnippetCode = (snippetCode: string, mode: 'prepend' | 'append' | 'replace') => {
+    if (mode === 'replace') {
+      setSourceCode(snippetCode);
+    } else if (mode === 'prepend') {
+      setSourceCode(prev => `${snippetCode}\n\n${prev}`);
+    } else {
+      setSourceCode(prev => `${prev}\n\n${snippetCode}`);
+    }
+  };
 
   // Switch conversion mode
   const handleSelectConversionMode = (mode: 'builtin_to_urp' | 'glsl_to_srp') => {
@@ -378,6 +393,17 @@ ${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`)
             className="hidden"
           />
 
+          {/* GLSL Snippets Library Button */}
+          <button
+            id="btn-open-snippet-library-top"
+            onClick={() => setIsSnippetLibraryOpen(true)}
+            className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#1E232B] hover:bg-[#282F3A] text-indigo-300 text-xs font-medium rounded border border-indigo-500/30 transition cursor-pointer shadow-xs"
+            title="Open GLSL Shader Snippet Library (Noise, SDFs, Blending modes, Math)"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+            <span>GLSL Snippets</span>
+          </button>
+
           <button
             id="btn-recompile"
             onClick={runLocalTranspilation}
@@ -608,6 +634,7 @@ ${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`)
           <SourceCodeEditor
             code={sourceCode}
             onChange={setSourceCode}
+            onOpenSnippetLibrary={() => setIsSnippetLibraryOpen(true)}
             title={conversionMode === 'builtin_to_urp' 
               ? 'Source: Unity Built-in RP' 
               : 'Source: OpenGL / GLSL'}
@@ -726,6 +753,20 @@ ${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`)
                   <Maximize2 className="w-3.5 h-3.5" />
                 </button>
               </div>
+
+              <button
+                id="btn-preview-in-3d"
+                onClick={() => {
+                  if (onPreviewShader && transpileResult) {
+                    onPreviewShader(sourceCode, targetPipeline);
+                  }
+                }}
+                className="flex items-center space-x-1 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded shadow-sm transition cursor-pointer"
+                title="Send active shader to 3D Preview (transpiles URP HLSL to WebGL GLSL for approximate real-time visual simulation and profiling)"
+              >
+                <Compass className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">3D Preview (WebGL)</span>
+              </button>
 
               <button
                 id="btn-format-converted-code"
@@ -854,6 +895,14 @@ ${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`)
         </div>
 
       </div>
+
+      {/* GLSL Shader Snippet Library Sub-Component */}
+      <ShaderSnippetLibrary
+        isOpen={isSnippetLibraryOpen}
+        onClose={() => setIsSnippetLibraryOpen(false)}
+        activeSourceCode={sourceCode}
+        onInsertCode={handleInsertSnippetCode}
+      />
 
     </div>
   );

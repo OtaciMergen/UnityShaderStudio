@@ -103,6 +103,14 @@ This tool provides side-by-side annotations explaining every token replacement s
 
 ---
 
-## 📄 License & Attribution
+## 🔒 Security & Privacy
 
-This project is created for **learning and educational purposes**. All code conversions are processed locally.
+- **100% Deterministic & Offline-Capable**: No AI models, remote APIs, or cloud analytics are used. Transpilation and AST evaluation occur entirely in the user's browser.
+- **No Secret Keys Required**: The project does not require or store sensitive credentials or third-party tokens.
+- **Strict Safe Sandboxing**: WebGL shader execution runs within an isolated HTML5 canvas context.
+
+---
+
+## 📄 License
+
+This project is licensed under the [MIT License](LICENSE). You are free to use, modify, distribute, and integrate the transpiler logic and converted shaders into personal or commercial Unity projects.

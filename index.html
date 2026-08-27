@@ -3,16 +3,120 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>UniShader Studio — Unity URP & HDRP Shader Migration Engine</title>
-    <meta name="description" content="Convert OpenGL GLSL and legacy Unity built-in shaders to modern Unity URP/HDRP HLSL with SRP Batcher compliance, cross-pipeline function matrix, and 3D preview." />
-    <meta property="og:title" content="UniShader Studio — Unity URP & HDRP Shader Migration Engine" />
-    <meta property="og:description" content="Convert OpenGL GLSL and legacy Unity built-in shaders to modern Unity URP/HDRP HLSL with SRP Batcher compliance, cross-pipeline function matrix, and 3D preview." />
+    <title>UniShader Studio — Unity URP &amp; HDRP Shader Migration Engine</title>
+    
+    <!-- Primary Meta Tags -->
+    <meta name="title" content="UniShader Studio — Unity URP &amp; HDRP Shader Migration Engine" />
+    <meta name="description" content="Convert OpenGL GLSL and legacy Unity built-in shaders (CGPROGRAM / Surface) directly to modern Unity URP and HDRP HLSL with full SRP Batcher compliance, cross-pipeline function matrix, performance estimation, and interactive 3D WebGL preview." />
+    <meta name="keywords" content="Unity URP shader converter, GLSL to HLSL, Unity HDRP shader migration, SRP Batcher optimization, ShaderLab converter, CGPROGRAM to HLSL, Unity 6 shaders, Unity Universal Render Pipeline, GLSL to Unity, shader migration tool, Unity HLSL transpiler, CBUFFER UnityPerMaterial, Unity shader profiler" />
+    <meta name="author" content="UniShader Studio" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="theme-color" content="#4f46e5" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- Open Graph / Facebook / LinkedIn / Discord -->
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="UniShader Studio" />
+    <meta property="og:title" content="UniShader Studio — Unity URP &amp; HDRP Shader Migration Engine" />
+    <meta property="og:description" content="Convert OpenGL GLSL and legacy Unity built-in shaders directly to modern Unity URP and HDRP HLSL with SRP Batcher compliance and 3D WebGL preview." />
+    <meta property="og:image" content="/favicon.svg" />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- Twitter / X -->
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="UniShader Studio — Unity URP &amp; HDRP Shader Migration Engine" />
+    <meta name="twitter:description" content="Convert OpenGL GLSL and legacy Unity built-in shaders directly to modern Unity URP and HDRP HLSL with SRP Batcher compliance and 3D WebGL preview." />
+    <meta name="twitter:image" content="/favicon.svg" />
+
+    <!-- Schema.org JSON-LD Structured Data for Search Engine Rich Snippets -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebApplication",
+          "@id": "/#webapp",
+          "name": "UniShader Studio",
+          "url": "/",
+          "description": "Automated shader converter for OpenGL GLSL and legacy Unity Built-in CG shaders to modern Unity Universal Render Pipeline (URP) and High Definition Render Pipeline (HDRP) HLSL.",
+          "applicationCategory": "DeveloperApplication",
+          "operatingSystem": "Any",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+          },
+          "featureList": [
+            "GLSL to Unity URP HLSL conversion",
+            "Unity Built-in CGPROGRAM to URP/HDRP migration",
+            "SRP Batcher alignment and CBUFFER_START(UnityPerMaterial) injection",
+            "Cross-pipeline intrinsic function mapping matrix",
+            "Interactive 3D WebGL shader preview and uniform tuner",
+            "Static GPU instruction profiler and multi-platform latency estimator"
+          ]
+        },
+        {
+          "@type": "WebSite",
+          "@id": "/#website",
+          "url": "/",
+          "name": "UniShader Studio",
+          "description": "Convert GLSL and Unity Legacy Shaders to modern Unity URP & HDRP HLSL with SRP Batcher compliance."
+        },
+        {
+          "@type": "FAQPage",
+          "@id": "/#faq",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "How do I convert GLSL or Unity Built-in shaders to URP?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Paste your GLSL fragment/vertex shader or legacy Unity CGPROGRAM/Surface shader into the editor, select your target pipeline (Universal RP or High Definition RP), and UniShader Studio automatically generates complete, SRP Batcher-compliant HLSL code with modern CBUFFER declarations and include headers."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "What makes a shader SRP Batcher compatible in Unity?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "To be SRP Batcher compatible, all material properties must be declared inside a single constant buffer named CBUFFER_START(UnityPerMaterial) ... CBUFFER_END with 16-byte structure alignment, without per-object render state modifications."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "How does the 3D WebGL shader preview work?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "The 3D preview transpiles Unity URP HLSL shaders to client-side WebGL GLSL in real-time, allowing developers to inspect lighting, uniforms, and textures on 3D meshes (sphere, torus, cube) alongside GPU cycle approximations."
+              }
+            }
+          ]
+        }
+      ]
+    }
+    </script>
   </head>
-  <body>
+  <body class="bg-[#0a0c0e] text-slate-100">
     <div id="root"></div>
+
+    <!-- Crawlable noscript fallback for search engines without JavaScript -->
+    <noscript>
+      <div style="max-width: 800px; margin: 40px auto; padding: 20px; font-family: system-ui, sans-serif; line-height: 1.6; color: #e2e8f0; background: #16181d; border-radius: 8px;">
+        <h1 style="color: #818cf8; font-size: 24px;">UniShader Studio — Unity URP &amp; HDRP Shader Migration Engine</h1>
+        <p>UniShader Studio is a developer utility for converting OpenGL GLSL and legacy Unity Built-in Render Pipeline (CGPROGRAM / Surface) shaders into modern Unity Universal Render Pipeline (URP) and High Definition Render Pipeline (HDRP) HLSL.</p>
+        
+        <h2 style="color: #a5b4fc; font-size: 18px; margin-top: 20px;">Key Features:</h2>
+        <ul>
+          <li><strong>Automated GLSL to URP/HDRP Translation:</strong> Translates GLSL functions (texture2D, mix, fract, inversesqrt) into standard Unity HLSL macros (SAMPLE_TEXTURE2D, lerp, frac, rsqrt).</li>
+          <li><strong>SRP Batcher Compatibility:</strong> Inlines constant buffers into CBUFFER_START(UnityPerMaterial) with proper 16-byte alignment.</li>
+          <li><strong>Cross-Pipeline Function Matrix:</strong> Quick reference for lighting, space transformations, matrix conversions, and texture sampling across Built-in, URP, and HDRP.</li>
+          <li><strong>Interactive 3D WebGL Shader Preview &amp; Profiler:</strong> Test shaders in real-time on 3D orbital geometry with GPU cycle heuristics and multi-platform latency estimations.</li>
+        </ul>
+        <p style="margin-top: 20px; font-size: 13px; color: #94a3b8;">Please enable JavaScript to access the interactive converter, 3D viewport, and profiling workbench.</p>
+      </div>
+    </noscript>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

@@ -1,0 +1,17 @@
+{
+  "name": "UniShader Studio — Unity URP & HDRP Shader Migration Engine",
+  "short_name": "UniShader Studio",
+  "description": "Convert GLSL and Unity Legacy Shaders to modern Unity URP / HDRP HLSL with SRP Batcher compliance and 3D WebGL preview.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0c0e",
+  "theme_color": "#4f46e5",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
