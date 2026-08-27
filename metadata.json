@@ -1,0 +1,8 @@
+{
+  "name": "GLSL to Unity SRP Shader Converter",
+  "description": "Convert Unity Built-in Renderer (CGPROGRAM / Surface) and OpenGL GLSL code directly to modern Unity URP and HDRP HLSL shaders with full SRP Batcher compliance, automated migration, and cross-pipeline function lookup.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
