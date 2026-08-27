@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Zap, 
-  Sparkles, 
   Copy, 
   Check, 
   Download, 
@@ -82,14 +81,10 @@ export const ConverterWorkbench: React.FC<ConverterWorkbenchProps> = ({
 
   // Output & Diagnostics State
   const [transpileResult, setTranspileResult] = useState<TranspileResult | null>(null);
-  const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
-  const [aiExplanation, setAiExplanation] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
   const [formattedSuccess, setFormattedSuccess] = useState<boolean>(false);
-  const [viewMode, setViewMode] = useState<'code' | 'performance' | 'properties' | 'annotations' | 'analysis'>('code');
+  const [viewMode, setViewMode] = useState<'code' | 'performance' | 'properties' | 'annotations'>('code');
   const [layoutMode, setLayoutMode] = useState<'split' | 'wide' | 'full'>('split');
-  const [aiAnalysis, setAiAnalysis] = useState<any | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -171,70 +166,6 @@ export const ConverterWorkbench: React.FC<ConverterWorkbenchProps> = ({
     } catch (err: any) {
       console.error('Transpile error:', err);
       setErrorMessage(err.message || 'Transpilation error');
-    }
-  };
-
-  // Call Server-Side Gemini API for Deep Shader Porting
-  const handleAiTransmute = async () => {
-    setIsAiLoading(true);
-    setErrorMessage(null);
-    try {
-      const response = await fetch('/api/shader/port', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sourceGlsl: sourceCode,
-          targetPipeline,
-          unityVersion,
-          surfaceMode: surfaceType,
-          srpBatcher,
-        }),
-      });
-
-      const resData = await response.json();
-      if (response.ok && resData.success && resData.data) {
-        const aiData = resData.data;
-        if (transpileResult) {
-          setTranspileResult({
-            ...transpileResult,
-            convertedCode: aiData.convertedCode || transpileResult.convertedCode,
-            warnings: [...transpileResult.warnings, ...(aiData.warnings || [])],
-          });
-        }
-        setAiExplanation(aiData.explanation || 'AI Deep Transmutation completed successfully.');
-      } else {
-        // Fallback gracefully
-        setErrorMessage(resData.error || 'AI service unavailable. Local rule-based compilation is active.');
-      }
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to communicate with AI shader migration service.');
-    } finally {
-      setIsAiLoading(false);
-    }
-  };
-
-  // Call Server-Side AI Analysis
-  const handleAnalyzeShader = async () => {
-    if (!transpileResult?.convertedCode) return;
-    setIsAnalyzing(true);
-    setViewMode('analysis');
-    try {
-      const res = await fetch('/api/shader/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          shaderCode: transpileResult.convertedCode,
-          pipeline: targetPipeline,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setAiAnalysis(data.data);
-      }
-    } catch (err: any) {
-      console.error('Analysis error:', err);
-    } finally {
-      setIsAnalyzing(false);
     }
   };
 
@@ -442,24 +373,13 @@ ${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`)
             className="hidden"
           />
 
-          {/* Action Buttons */}
           <button
-            id="btn-ai-transmute"
-            onClick={handleAiTransmute}
-            disabled={isAiLoading}
-            className="flex items-center space-x-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs rounded shadow-sm transition disabled:opacity-50 cursor-pointer"
+            id="btn-recompile"
+            onClick={runLocalTranspilation}
+            className="flex items-center space-x-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs rounded shadow-sm transition cursor-pointer"
           >
-            {isAiLoading ? (
-              <>
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                <span>Converting with AI...</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>AI Deep Convert</span>
-              </>
-            )}
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Re-compile</span>
           </button>
 
           <button
@@ -659,17 +579,6 @@ ${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`)
         </div>
       )}
 
-      {/* AI Explanation Banner (if available) */}
-      {aiExplanation && (
-        <div className="bg-[#16181D] border border-indigo-500/30 rounded-lg p-3.5 text-xs text-slate-200 flex items-start space-x-3">
-          <Sparkles className="w-4 h-4 text-indigo-400 flex-shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <div className="font-semibold text-indigo-300 text-xs">AI Migration Insights:</div>
-            <p className="text-slate-300 leading-relaxed text-[11px]">{aiExplanation}</p>
-          </div>
-        </div>
-      )}
-
       {/* Error Banner */}
       {errorMessage && (
         <div className="bg-[#1C1418] border border-rose-500/30 rounded-lg p-3 text-xs text-rose-300 flex items-center space-x-2">
@@ -789,19 +698,6 @@ ${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`)
                 <span className="px-1.5 py-0.2 bg-[#121418] text-[10px] rounded text-slate-400">
                   {transpileResult?.annotations.length || 0}
                 </span>
-              </button>
-
-              <button
-                id="view-tab-analysis"
-                onClick={handleAnalyzeShader}
-                className={`px-2.5 py-1 rounded text-xs font-medium transition flex items-center gap-1 cursor-pointer whitespace-nowrap ${
-                  viewMode === 'analysis'
-                    ? 'bg-indigo-600/15 text-indigo-300 font-semibold border border-indigo-500/30'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Sparkles className="w-3 h-3 text-indigo-400 shrink-0" />
-                <span>AI Audit</span>
               </button>
             </div>
 
@@ -963,55 +859,6 @@ ${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`)
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
-
-            {/* AI Audit View */}
-            {viewMode === 'analysis' && (
-              <div className="p-4 space-y-4 text-xs">
-                {isAnalyzing ? (
-                  <div className="flex items-center justify-center py-12 space-x-2 text-slate-400">
-                    <RefreshCw className="w-4 h-4 animate-spin text-indigo-400" />
-                    <span>Analyzing ALU instructions and SRP Batcher register pressure...</span>
-                  </div>
-                ) : aiAnalysis ? (
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-[#121418] border border-[#23272F] rounded p-3">
-                        <span className="text-slate-400 block text-[11px]">SRP Batcher Compatibility:</span>
-                        <span className="text-emerald-400 font-semibold text-sm">{aiAnalysis.srpBatcherStatus || 'Compliant'}</span>
-                        <p className="text-slate-400 text-[11px] mt-1">{aiAnalysis.srpBatcherAnalysis}</p>
-                      </div>
-
-                      <div className="bg-[#121418] border border-[#23272F] rounded p-3">
-                        <span className="text-slate-400 block text-[11px]">Performance Score:</span>
-                        <span className="text-indigo-400 font-semibold text-sm">{aiAnalysis.performanceScore || 92} / 100</span>
-                        <p className="text-slate-400 text-[11px] mt-1">{aiAnalysis.aluAnalysis}</p>
-                      </div>
-                    </div>
-
-                    {aiAnalysis.optimizationSuggestions && aiAnalysis.optimizationSuggestions.length > 0 && (
-                      <div className="space-y-2">
-                        <div className="font-medium text-slate-200">Recommended GPU Optimizations:</div>
-                        {aiAnalysis.optimizationSuggestions.map((sug: any, i: number) => (
-                          <div key={i} className="bg-[#121418] border border-[#23272F] rounded p-3 space-y-1">
-                            <div className="font-medium text-amber-300">{sug.title}</div>
-                            <p className="text-slate-300 text-[11px]">{sug.description}</p>
-                            {sug.codeFix && (
-                              <pre className="bg-[#0A0C0E] p-2 rounded text-[10px] font-mono text-emerald-400 mt-1">
-                                {sug.codeFix}
-                              </pre>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="text-center py-12 text-slate-500">
-                    Click "AI Audit" above to perform static analysis on your generated HLSL shader.
-                  </div>
-                )}
               </div>
             )}
           </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Header } from './components/Header';
 import { ConverterWorkbench } from './components/ConverterWorkbench';
 import { FunctionSearchMatrix } from './components/FunctionSearchMatrix';
@@ -9,7 +9,7 @@ import { PerformanceImpactEstimator } from './components/PerformanceImpactEstima
 import { MatrixAndReferencesHub } from './components/MatrixAndReferencesHub';
 import { TargetPipeline, UnityVersion, ShaderPreset } from './types';
 import { SHADER_PRESETS } from './data/shaderPresets';
-import { Code2, Zap, Layers, Sparkles, BookOpen, Search, Cpu } from 'lucide-react';
+import { Zap, Code2 } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'converter' | 'search' | 'custom-node' | 'performance' | 'docs' | 'preview'>('converter');
@@ -18,21 +18,6 @@ export default function App() {
   const [activePreset, setActivePreset] = useState<ShaderPreset | null>(SHADER_PRESETS[0]);
   const [previewGlsl, setPreviewGlsl] = useState<string>(SHADER_PRESETS[0].glslCode);
   const [selectedDocTopic, setSelectedDocTopic] = useState<string | undefined>(undefined);
-  const [hasGeminiKey, setHasGeminiKey] = useState<boolean>(true);
-
-  // Check backend health & status on mount
-  useEffect(() => {
-    fetch('/api/health')
-      .then(res => res.json())
-      .then(data => {
-        if (data.hasGeminiKey !== undefined) {
-          setHasGeminiKey(data.hasGeminiKey);
-        }
-      })
-      .catch(() => {
-        // Dev server or offline
-      });
-  }, []);
 
   const handlePreviewShader = (glsl: string, pipeline: TargetPipeline) => {
     setPreviewGlsl(glsl);
@@ -70,7 +55,6 @@ export default function App() {
         setTargetPipeline={setTargetPipeline}
         unityVersion={unityVersion}
         setUnityVersion={setUnityVersion}
-        hasGeminiKey={hasGeminiKey}
       />
 
       {/* Main View Area */}

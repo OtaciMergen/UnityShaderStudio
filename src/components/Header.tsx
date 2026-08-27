@@ -6,7 +6,6 @@ import {
   BookOpen, 
   Eye, 
   Code2, 
-  Sparkles,
   Cpu,
   Gauge
 } from 'lucide-react';
@@ -19,7 +18,6 @@ interface HeaderProps {
   setTargetPipeline: (pipeline: TargetPipeline) => void;
   unityVersion: UnityVersion;
   setUnityVersion: (ver: UnityVersion) => void;
-  hasGeminiKey: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -29,7 +27,6 @@ export const Header: React.FC<HeaderProps> = ({
   setTargetPipeline,
   unityVersion,
   setUnityVersion,
-  hasGeminiKey,
 }) => {
   return (
     <header className="border-b border-[#23272F] bg-[#16181D] text-slate-100 sticky top-0 z-30 shadow-sm backdrop-blur-md">
@@ -46,11 +43,6 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="text-[10px] font-medium uppercase px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 whitespace-nowrap hidden sm:inline-block">
                 GLSL / Built-in ➔ URP
               </span>
-              {hasGeminiKey && (
-                <span className="text-[10px] font-medium uppercase px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hidden lg:inline-flex items-center gap-1 whitespace-nowrap">
-                  <Sparkles className="w-2.5 h-2.5" /> AI Active
-                </span>
-              )}
             </div>
           </div>
 
