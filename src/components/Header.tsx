@@ -7,13 +7,14 @@ import {
   Eye, 
   Code2, 
   Cpu,
-  Gauge
+  Gauge,
+  GraduationCap
 } from 'lucide-react';
 import { TargetPipeline, UnityVersion } from '../types';
 
 interface HeaderProps {
-  activeTab: 'converter' | 'search' | 'custom-node' | 'performance' | 'docs' | 'preview';
-  setActiveTab: (tab: 'converter' | 'search' | 'custom-node' | 'performance' | 'docs' | 'preview') => void;
+  activeTab: 'converter' | 'search' | 'custom-node' | 'performance' | 'docs' | 'preview' | 'tutorials';
+  setActiveTab: (tab: 'converter' | 'search' | 'custom-node' | 'performance' | 'docs' | 'preview' | 'tutorials') => void;
   targetPipeline: TargetPipeline;
   setTargetPipeline: (pipeline: TargetPipeline) => void;
   unityVersion: UnityVersion;
@@ -35,13 +36,15 @@ export const Header: React.FC<HeaderProps> = ({
           
           {/* Logo & Title */}
           <div className="flex items-center space-x-2.5 flex-shrink-0">
-            <div className="h-8 w-8 rounded-lg bg-[#1E232B] border border-[#2D343F] flex items-center justify-center shadow-sm flex-shrink-0">
+            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 flex items-center justify-center shadow-sm flex-shrink-0">
               <Code2 className="h-4 w-4 text-indigo-400" />
             </div>
             <div className="flex items-center space-x-2">
-              <span className="font-semibold text-base text-slate-100 tracking-tight whitespace-nowrap">Shader Converter</span>
+              <span className="font-bold text-base text-slate-100 tracking-tight whitespace-nowrap">
+                Uni<span className="text-indigo-400">Shader</span> Studio
+              </span>
               <span className="text-[10px] font-medium uppercase px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 whitespace-nowrap hidden sm:inline-block">
-                GLSL / Built-in ➔ URP
+                Unity URP / HDRP Suite
               </span>
             </div>
           </div>
@@ -111,6 +114,19 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Eye className="w-3.5 h-3.5 flex-shrink-0" />
               <span>3D Preview</span>
+            </button>
+
+            <button
+              id="tab-btn-tutorials"
+              onClick={() => setActiveTab('tutorials')}
+              className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                activeTab === 'tutorials'
+                  ? 'bg-indigo-600/15 text-indigo-300 border border-indigo-500/30 font-semibold'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-[#1E232B] border border-transparent'
+              }`}
+            >
+              <GraduationCap className="w-3.5 h-3.5 flex-shrink-0" />
+              <span>Tutorials</span>
             </button>
 
             <button

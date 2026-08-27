@@ -14,6 +14,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { CustomNodePort, CustomNodeDefinition } from '../types';
+import { HLSLCodeViewer } from './HLSLCodeViewer';
 
 export const CustomNodeStudio: React.FC = () => {
   const [functionName, setFunctionName] = useState<string>('CustomShadingEffect');
@@ -494,9 +495,9 @@ ${outputPorts.map(p => `   [+] Name: "${p.name}", Type: ${p.type}`).join('\n')}`
               </div>
             </div>
 
-            <pre className="p-3.5 font-mono text-xs leading-relaxed text-slate-300 bg-[#0A0C0E] overflow-auto max-h-[460px] select-text">
-              <code>{generatedHlsl}</code>
-            </pre>
+            <div className="h-[460px] overflow-hidden">
+              <HLSLCodeViewer code={generatedHlsl} />
+            </div>
           </div>
 
         </div>

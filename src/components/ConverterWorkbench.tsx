@@ -39,6 +39,8 @@ import { transpileGlslToUnity } from '../lib/shaderTranspiler';
 import { formatUnityHlsl } from '../lib/shaderFormatter';
 import { SHADER_PRESETS } from '../data/shaderPresets';
 import { PerformanceImpactEstimator } from './PerformanceImpactEstimator';
+import { HLSLCodeViewer } from './HLSLCodeViewer';
+import { SourceCodeEditor } from './SourceCodeEditor';
 import JSZip from 'jszip';
 
 interface ConverterWorkbenchProps {
@@ -60,13 +62,13 @@ export const ConverterWorkbench: React.FC<ConverterWorkbenchProps> = ({
   setActivePreset,
   onPreviewShader,
 }) => {
-  // Conversion Mode & Source Format
-  const [conversionMode, setConversionMode] = useState<'builtin_to_urp' | 'glsl_to_srp'>('builtin_to_urp');
-  const [sourceFormat, setSourceFormat] = useState<SourceFormat>('auto');
+  // Conversion Mode & Source Format (Default: GLSL to Unity URP / SRP)
+  const [conversionMode, setConversionMode] = useState<'builtin_to_urp' | 'glsl_to_srp'>('glsl_to_srp');
+  const [sourceFormat, setSourceFormat] = useState<SourceFormat>('glsl');
 
-  // Source code state (default to Built-in unlit with fog preset)
+  // Source code state (default to active preset or first GLSL preset)
   const [sourceCode, setSourceCode] = useState<string>(
-    activePreset ? activePreset.glslCode : (SHADER_PRESETS.find(p => p.category === 'Built-in RP Legacy')?.glslCode || SHADER_PRESETS[0].glslCode)
+    activePreset ? activePreset.glslCode : SHADER_PRESETS[0].glslCode
   );
 
   // Conversion Options
@@ -138,6 +140,9 @@ export const ConverterWorkbench: React.FC<ConverterWorkbenchProps> = ({
       if (activePreset.category === 'Built-in RP Legacy') {
         setConversionMode('builtin_to_urp');
         setSourceFormat('builtin_cg');
+      } else {
+        setConversionMode('glsl_to_srp');
+        setSourceFormat('glsl');
       }
     }
   }, [activePreset]);
@@ -594,38 +599,22 @@ ${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`)
         'grid-cols-1'
       }`}>
         
-        {/* LEFT: Source Code Editor */}
+        {/* LEFT: Source Code Editor with Line Numbers and Highlighting */}
         <div className={`flex flex-col bg-[#16181D] border border-[#23272F] rounded-lg overflow-hidden shadow-sm ${
           layoutMode === 'full' ? 'hidden' :
           layoutMode === 'wide' ? 'lg:col-span-4' :
           ''
         }`}>
-          <div className="bg-[#1A1D21] px-3.5 py-2 border-b border-[#23272F] flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
-              <span className="font-mono text-xs font-medium text-slate-200 pl-1 truncate">
-                {conversionMode === 'builtin_to_urp' 
-                  ? 'Source: Unity Built-in RP' 
-                  : 'Source: OpenGL / GLSL'}
-              </span>
-            </div>
-            <div className="text-[11px] text-slate-400 font-mono shrink-0">
-              {sourceCode.split('\n').length} lines
-            </div>
-          </div>
-
-          <div className="relative flex-1 min-h-[460px]">
-            <textarea
-              id="source-glsl-textarea"
-              value={sourceCode}
-              onChange={(e) => setSourceCode(e.target.value)}
-              placeholder={conversionMode === 'builtin_to_urp'
-                ? '// Paste your Unity Built-in ShaderLab / CGPROGRAM / Surface Shader code here...'
-                : '// Paste your OpenGL / GLSL code block here...'}
-              spellCheck={false}
-              className="w-full h-full min-h-[460px] p-4 bg-[#0A0C0E] text-slate-200 font-mono text-xs leading-relaxed resize-none focus:outline-none focus:ring-1 focus:ring-indigo-500/50 selection:bg-indigo-500/30"
-            />
-          </div>
+          <SourceCodeEditor
+            code={sourceCode}
+            onChange={setSourceCode}
+            title={conversionMode === 'builtin_to_urp' 
+              ? 'Source: Unity Built-in RP' 
+              : 'Source: OpenGL / GLSL'}
+            placeholder={conversionMode === 'builtin_to_urp'
+              ? '// Paste your Unity Built-in ShaderLab / CGPROGRAM / Surface Shader code here...'
+              : '// Paste your OpenGL / GLSL code block here...'}
+          />
         </div>
 
         {/* RIGHT: Converted Unity Shader & Diagnostics */}
@@ -769,11 +758,11 @@ ${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`)
           </div>
 
           {/* Body Content based on View Mode */}
-          <div className="relative flex-1 min-h-[460px] overflow-auto bg-[#0A0C0E]">
+          <div className="relative flex-1 min-h-[460px] overflow-hidden bg-[#0A0C0E]">
             {viewMode === 'code' && (
-              <pre className="w-full h-full p-4 font-mono text-xs leading-relaxed text-slate-200 bg-[#0A0C0E] select-text overflow-auto">
-                <code>{transpileResult?.convertedCode || '// Compiling...'}</code>
-              </pre>
+              <HLSLCodeViewer 
+                code={transpileResult?.convertedCode || '// Compiling...'} 
+              />
             )}
 
             {/* Performance Impact & SRP Batcher Estimation View */}

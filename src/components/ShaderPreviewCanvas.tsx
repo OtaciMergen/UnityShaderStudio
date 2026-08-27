@@ -732,56 +732,140 @@ function prepareWebGLShaderSource(rawCode: string): string {
   const hasMainImage = cleanCode.includes('mainImage');
   const hasVoidMain = cleanCode.includes('void main(') || cleanCode.includes('void main (');
 
+  // Helper to check if a uniform is already declared in cleanCode
+  const isUniformDeclared = (name: string): boolean => {
+    const reg = new RegExp(`\\buniform\\s+[^;]*\\b${name}\\b`, 'i');
+    return reg.test(cleanCode);
+  };
+
+  // Helper to check if a varying is already declared in cleanCode
+  const isVaryingDeclared = (name: string): boolean => {
+    const reg = new RegExp(`\\bvarying\\s+[^;]*\\b${name}\\b`, 'i');
+    return reg.test(cleanCode);
+  };
+
+  // List of standard uniforms supported by the WebGL preview runtime
+  const standardUniforms: Array<{ name: string; type: string }> = [
+    { name: '_Time', type: 'vec4' },
+    { name: '_ScreenParams', type: 'vec4' },
+    { name: '_BaseColor', type: 'vec4' },
+    { name: '_Speed', type: 'float' },
+    { name: '_GlowPower', type: 'float' },
+    { name: '_CellScale', type: 'float' },
+    { name: '_Metallic', type: 'float' },
+    { name: '_Roughness', type: 'float' },
+    { name: '_RimPower', type: 'float' },
+    { name: '_ScanlineDensity', type: 'float' },
+  ];
+
+  // Only inject uniforms that aren't already declared in the source code
+  const injectedUniforms = standardUniforms
+    .filter(u => !isUniformDeclared(u.name))
+    .map(u => `uniform ${u.type} ${u.name};`)
+    .join('\n    ');
+
+  // List of standard vertex varyings
+  const standardVaryings: Array<{ name: string; type: string }> = [
+    { name: 'v_uv', type: 'vec2' },
+    { name: 'v_normal', type: 'vec3' },
+    { name: 'v_positionWS', type: 'vec3' },
+  ];
+
+  const injectedVaryings = standardVaryings
+    .filter(v => !isVaryingDeclared(v.name))
+    .map(v => `varying ${v.type} ${v.name};`)
+    .join('\n    ');
+
   const header = `
     #ifdef GL_ES
     precision highp float;
     precision highp int;
     #endif
 
-    // Preprocessor & Compatibility Macros
+    // Preprocessor & Compatibility Macros with guards
+    #ifndef iTime
     #define iTime (_Time.y)
+    #endif
+    #ifndef iResolution
     #define iResolution (_ScreenParams.xyz)
+    #endif
+    #ifndef iTimeDelta
     #define iTimeDelta (0.016666)
+    #endif
+    #ifndef iFrame
     #define iFrame (int(_Time.y * 60.0))
+    #endif
+    #ifndef iMouse
     #define iMouse (vec4(_ScreenParams.xy * 0.5, 0.0, 0.0))
+    #endif
 
-    // HLSL to GLSL Fallback Types
+    // HLSL to GLSL Fallback Types & Functions with guards
+    #ifndef float2
     #define float2 vec2
+    #endif
+    #ifndef float3
     #define float3 vec3
+    #endif
+    #ifndef float4
     #define float4 vec4
+    #endif
+    #ifndef half
     #define half float
+    #endif
+    #ifndef half2
     #define half2 vec2
+    #endif
+    #ifndef half3
     #define half3 vec3
+    #endif
+    #ifndef half4
     #define half4 vec4
+    #endif
+    #ifndef fixed
     #define fixed float
+    #endif
+    #ifndef fixed2
     #define fixed2 vec2
+    #endif
+    #ifndef fixed3
     #define fixed3 vec3
+    #endif
+    #ifndef fixed4
     #define fixed4 vec4
+    #endif
+    #ifndef float4x4
     #define float4x4 mat4
+    #endif
+    #ifndef float3x3
     #define float3x3 mat3
+    #endif
+    #ifndef lerp
     #define lerp(a, b, t) mix(a, b, t)
+    #endif
+    #ifndef frac
     #define frac(x) fract(x)
+    #endif
+    #ifndef saturate
     #define saturate(x) clamp(x, 0.0, 1.0)
+    #endif
+    #ifndef atan2
     #define atan2(y, x) atan(y, x)
+    #endif
+    #ifndef rsqrt
     #define rsqrt(x) inversesqrt(x)
+    #endif
+    #ifndef fmod
     #define fmod(x, y) mod(x, y)
+    #endif
+    #ifndef mul
     #define mul(a, b) ((a) * (b))
+    #endif
 
-    // Built-in Standard Uniforms
-    uniform vec4 _Time;
-    uniform vec4 _ScreenParams;
-    uniform vec4 _BaseColor;
-    uniform float _Speed;
-    uniform float _GlowPower;
-    uniform float _CellScale;
-    uniform float _Metallic;
-    uniform float _Roughness;
-    uniform float _RimPower;
-    uniform float _ScanlineDensity;
+    // Dynamically Injected Non-Duplicate Standard Uniforms
+    ${injectedUniforms}
 
-    varying vec2 v_uv;
-    varying vec3 v_normal;
-    varying vec3 v_positionWS;
+    // Dynamically Injected Non-Duplicate Varyings
+    ${injectedVaryings}
   `;
 
   if (hasMainImage && !hasVoidMain) {

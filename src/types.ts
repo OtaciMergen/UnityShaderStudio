@@ -201,3 +201,47 @@ export interface DocChapter {
   tags: string[];
   contentMarkdown: string;
 }
+
+export type TutorialCategory = 
+  | 'opengl_foundations' 
+  | 'unity_urp_srp' 
+  | 'procedural_math' 
+  | 'academic_papers' 
+  | 'stylized_vfx' 
+  | 'interactive_sandboxes';
+
+export interface TutorialResource {
+  id: string;
+  title: string;
+  author: string;
+  websiteOrSource: string;
+  url: string;
+  category: TutorialCategory;
+  level: 'Beginner' | 'Intermediate' | 'Advanced' | 'Research';
+  format: 'Article / Blog' | 'Interactive Book' | 'Academic Paper' | 'Video Series' | 'Interactive Tool';
+  summary: string;
+  keyTopics: string[];
+  recommendedPrerequisites?: string[];
+  conceptSnippet?: {
+    title: string;
+    language: 'glsl' | 'hlsl';
+    code: string;
+    note: string;
+  };
+  highlightBadge?: string;
+}
+
+export interface LearningRoadmap {
+  id: string;
+  title: string;
+  targetAudience: string;
+  estimatedWeeks: string;
+  description: string;
+  steps: Array<{
+    stepNumber: number;
+    title: string;
+    resourceIds: string[];
+    description: string;
+  }>;
+}
+
