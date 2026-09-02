@@ -28,6 +28,8 @@ import {
   Compass,
   Sparkles,
   GitCompare,
+  Box,
+  FolderArchive
 } from 'lucide-react';
 import { 
   TargetPipeline, 
@@ -46,6 +48,11 @@ import { HLSLCodeViewer } from './HLSLCodeViewer';
 import { SourceCodeEditor } from './SourceCodeEditor';
 import { ChangedPartsViewer } from './ChangedPartsViewer';
 import { ShaderSnippetLibrary } from './ShaderSnippetLibrary';
+import { BatchingAssistantModal } from './BatchingAssistantModal';
+import { UnityExportModal } from './UnityExportModal';
+import { scanAndGenerateBatchingProposals } from '../lib/batchingAssistant';
+import { EditorThemeSelector } from './EditorThemeSelector';
+import { DEFAULT_THEME_ID, STORAGE_KEY_EDITOR_THEME } from '../lib/shaderEditorThemes';
 import JSZip from 'jszip';
 
 interface ConverterWorkbenchProps {
@@ -88,12 +95,26 @@ export const ConverterWorkbench: React.FC<ConverterWorkbenchProps> = ({
 
   // Output & Diagnostics State
   const [transpileResult, setTranspileResult] = useState<TranspileResult | null>(null);
+  const [isHlslManuallyEdited, setIsHlslManuallyEdited] = useState<boolean>(false);
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
   const [formattedSuccess, setFormattedSuccess] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<'code' | 'changed_only' | 'performance' | 'properties' | 'annotations'>('code');
   const [layoutMode, setLayoutMode] = useState<'split' | 'wide' | 'full'>('split');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSnippetLibraryOpen, setIsSnippetLibraryOpen] = useState<boolean>(false);
+  const [isBatchingAssistantOpen, setIsBatchingAssistantOpen] = useState<boolean>(false);
+  const [isUnityExportOpen, setIsUnityExportOpen] = useState<boolean>(false);
+  const [editorThemeId, setEditorThemeId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem(STORAGE_KEY_EDITOR_THEME) || DEFAULT_THEME_ID;
+    }
+    return DEFAULT_THEME_ID;
+  });
+
+  // Scan current HLSL for batching & 16-byte alignment optimization proposals
+  const batchingReport = React.useMemo(() => {
+    return scanAndGenerateBatchingProposals(transpileResult?.convertedCode || '');
+  }, [transpileResult?.convertedCode]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -184,11 +205,52 @@ export const ConverterWorkbench: React.FC<ConverterWorkbenchProps> = ({
 
       const result = transpileGlslToUnity(sourceCode, options);
       setTranspileResult(result);
+      setIsHlslManuallyEdited(false);
       setErrorMessage(null);
     } catch (err: any) {
       console.error('Transpile error:', err);
       setErrorMessage(err.message || 'Transpilation error');
     }
+  };
+
+  const handleTargetHlslChange = (newCode: string) => {
+    setIsHlslManuallyEdited(true);
+    if (transpileResult) {
+      setTranspileResult({
+        ...transpileResult,
+        convertedCode: newCode,
+      });
+    } else {
+      setTranspileResult({
+        convertedCode: newCode,
+        shaderLabProperties: '',
+        cbufferCode: '',
+        properties: [],
+        annotations: [],
+        performance: {
+          totalInstructions: 0,
+          estimatedALU: 0,
+          estimatedTextureReads: 0,
+          srpBatcherCompatible: true,
+          srpIssues: [],
+          memoryFootprintBytes: 0,
+          performanceRating: 'Excellent',
+          warnings: [],
+        },
+        changedCodeOnly: '',
+        changedParts: [],
+      });
+    }
+  };
+
+  const handleRevertTargetHlsl = () => {
+    setIsHlslManuallyEdited(false);
+    runLocalTranspilation();
+  };
+
+  const handleApplyBatchingAssistantCode = (newCode: string, _msg: string) => {
+    setIsHlslManuallyEdited(true);
+    handleTargetHlslChange(newCode);
   };
 
   const handleCopyCode = () => {
@@ -231,64 +293,9 @@ export const ConverterWorkbench: React.FC<ConverterWorkbenchProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  // Export full Unity package ZIP
-  const handleExportZip = async () => {
-    if (!transpileResult?.convertedCode) return;
-    const zip = new JSZip();
-    const folder = zip.folder('Unity_Migrated_Shaders');
-
-    // Main shader file
-    const ext = targetPipeline === 'compute' ? '.compute' : (targetPipeline === 'shadergraph' || targetPipeline === 'srp_core' ? '.hlsl' : '.shader');
-    folder?.file(`MigratedShader${ext}`, transpileResult.convertedCode);
-
-    // If shader graph, also include Custom Function hlsl include and instructions
-    if (transpileResult.shaderGraphNode) {
-      folder?.file('GlslConvertedNode.hlsl', transpileResult.shaderGraphNode.hlslBody);
-      folder?.file(
-        'ShaderGraph_Node_Setup.txt',
-        `Unity Shader Graph Custom Function Node Instructions:
-1. Open your Shader Graph in Unity (URP or HDRP).
-2. Right click -> Create Node -> Custom Function.
-3. In the Node Inspector:
-   - Type: File
-   - Source: GlslConvertedNode.hlsl
-   - Name: GlslConvertedNode
-4. Inputs:
-${transpileResult.shaderGraphNode.inputs.map(i => `   - ${i.name} (${i.type})`).join('\n')}
-5. Outputs:
-${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`).join('\n')}`
-      );
-    }
-
-    // Material properties description
-    if (transpileResult.properties.length > 0) {
-      folder?.file(
-        'Properties_Reference.json',
-        JSON.stringify(transpileResult.properties, null, 2)
-      );
-    }
-
-    // README
-    folder?.file(
-      'README.md',
-      `# Converted Unity SRP Shader
-- **Target Pipeline**: ${targetPipeline.toUpperCase()} (Unity ${unityVersion})
-- **SRP Batcher Compliant**: ${transpileResult.srpBatcherCompliant ? 'Yes (100%)' : 'No'}
-- **Surface Mode**: ${surfaceType}
-
-### Installation:
-1. Drag the folder into your Unity Project \`Assets/\` folder.
-2. In Unity Editor, right-click the shader -> Create -> Material.
-3. Assign the material to your 3D Mesh or Fullscreen Blit renderer.`
-    );
-
-    const blob = await zip.generateAsync({ type: 'blob' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Unity_${targetPipeline.toUpperCase()}_ShaderBundle.zip`;
-    a.click();
-    URL.revokeObjectURL(url);
+  // Export full Unity package ZIP / Open Unity Export Modal
+  const handleExportZip = () => {
+    setIsUnityExportOpen(true);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -408,6 +415,26 @@ ${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`)
 
         {/* Right: Quick Action Controls */}
         <div className="flex items-center space-x-1.5 flex-wrap">
+          {/* Automated Batching Assistant Button */}
+          <button
+            id="btn-open-batching-assistant"
+            onClick={() => setIsBatchingAssistantOpen(true)}
+            className="flex items-center space-x-1.5 px-3 py-1 bg-gradient-to-r from-amber-500/20 via-indigo-500/20 to-cyan-500/20 hover:from-amber-500/30 hover:to-cyan-500/30 text-amber-300 hover:text-white font-medium text-xs rounded-lg border border-amber-500/40 hover:border-amber-400 shadow-xs transition cursor-pointer"
+            title="Open SRP Batching Assistant: Automatically scan and refactor CBUFFER alignment, 16-byte packing, and texture samplers"
+          >
+            <Zap className="w-3.5 h-3.5 text-amber-400" />
+            <span>Batching Assistant</span>
+            {batchingReport.totalProposals > 0 ? (
+              <span className="px-1.5 py-0.2 rounded-full bg-amber-400 text-black text-[10px] font-bold">
+                {batchingReport.totalProposals}
+              </span>
+            ) : (
+              <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/30 text-emerald-300 text-[10px] font-bold">
+                100%
+              </span>
+            )}
+          </button>
+
           {/* Quick Re-compile Button */}
           <button
             id="btn-recompile"
@@ -432,18 +459,18 @@ ${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`)
       </div>
 
       {/* Streamlined Target Pipeline & Shader Settings Strip */}
-      <div className="bg-[#12151B] border border-[#1E232E] rounded-xl px-3 py-2.5 text-xs text-slate-300 shadow-xs">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="bg-[#12151B] border border-[#1E232E] rounded-lg px-2.5 py-1.5 text-xs text-slate-300 shadow-xs">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           
           {/* Target Pipeline, Unity Version & Surface Pickers */}
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2">
             {/* Pipeline Picker */}
-            <div className="flex items-center space-x-1.5">
-              <span className="text-[11px] text-slate-400 font-medium">Pipeline:</span>
+            <div className="flex items-center space-x-1">
+              <span className="text-[10px] text-slate-400 font-medium">Pipeline:</span>
               <select
                 value={targetPipeline}
                 onChange={(e) => setTargetPipeline(e.target.value as TargetPipeline)}
-                className="bg-[#0A0C0F] text-slate-200 rounded-md px-2 py-1 border border-[#1E232E] focus:outline-none focus:border-indigo-500 font-mono text-[11px] cursor-pointer"
+                className="bg-[#0A0C0F] text-slate-200 rounded px-1.5 py-0.5 border border-[#1E232E] focus:outline-none focus:border-indigo-500 font-mono text-[10.5px] cursor-pointer"
               >
                 <option value="urp">URP (Universal)</option>
                 <option value="hdrp">HDRP (High Definition)</option>
@@ -454,12 +481,12 @@ ${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`)
             </div>
 
             {/* Unity Version */}
-            <div className="flex items-center space-x-1.5">
-              <span className="text-[11px] text-slate-400 font-medium">Unity:</span>
+            <div className="flex items-center space-x-1">
+              <span className="text-[10px] text-slate-400 font-medium">Unity:</span>
               <select
                 value={unityVersion}
                 onChange={(e) => setUnityVersion(e.target.value as UnityVersion)}
-                className="bg-[#0A0C0F] text-slate-200 rounded-md px-2 py-1 border border-[#1E232E] focus:outline-none focus:border-indigo-500 font-mono text-[11px] cursor-pointer"
+                className="bg-[#0A0C0F] text-slate-200 rounded px-1.5 py-0.5 border border-[#1E232E] focus:outline-none focus:border-indigo-500 font-mono text-[10.5px] cursor-pointer"
               >
                 <option value="6000">Unity 6 LTS</option>
                 <option value="2023">Unity 2023.3</option>
@@ -468,12 +495,12 @@ ${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`)
             </div>
 
             {/* Surface Mode */}
-            <div className="flex items-center space-x-1.5">
-              <span className="text-[11px] text-slate-400 font-medium">Surface:</span>
+            <div className="flex items-center space-x-1">
+              <span className="text-[10px] text-slate-400 font-medium">Surface:</span>
               <select
                 value={surfaceType}
                 onChange={(e) => setSurfaceType(e.target.value as SurfaceType)}
-                className="bg-[#0A0C0F] text-slate-200 rounded-md px-2 py-1 border border-[#1E232E] focus:outline-none focus:border-indigo-500 font-mono text-[11px] cursor-pointer"
+                className="bg-[#0A0C0F] text-slate-200 rounded px-1.5 py-0.5 border border-[#1E232E] focus:outline-none focus:border-indigo-500 font-mono text-[10.5px] cursor-pointer"
               >
                 <option value="unlit">Unlit Opaque</option>
                 <option value="lit_pbr">Lit (PBR / GGX)</option>
@@ -484,73 +511,83 @@ ${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`)
             </div>
 
             {/* ShaderLab Path */}
-            <div className="flex items-center space-x-1.5">
-              <span className="text-[11px] text-slate-400 font-medium">Path:</span>
+            <div className="flex items-center space-x-1">
+              <span className="text-[10px] text-slate-400 font-medium">Path:</span>
               <input
                 type="text"
                 value={customShaderName}
                 onChange={(e) => setCustomShaderName(e.target.value)}
                 placeholder="Custom/MigratedShader"
-                className="bg-[#0A0C0F] text-slate-200 rounded-md px-2 py-1 border border-[#1E232E] focus:outline-none focus:border-indigo-500 font-mono text-[11px] w-40"
+                className="bg-[#0A0C0F] text-slate-200 rounded px-1.5 py-0.5 border border-[#1E232E] focus:outline-none focus:border-indigo-500 font-mono text-[10.5px] w-36"
+              />
+            </div>
+
+            {/* Code Editor Theming Dropdown */}
+            <div className="flex items-center space-x-1" id="settings-theme-selector-container">
+              <span className="text-[10px] text-slate-400 font-medium">Theme:</span>
+              <EditorThemeSelector
+                currentThemeId={editorThemeId}
+                onThemeChange={setEditorThemeId}
+                compact={false}
               />
             </div>
           </div>
 
           {/* Quick Checkboxes & SRP Batcher Badge */}
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
             {/* SRP Batcher Toggle */}
-            <label className="flex items-center space-x-1.5 cursor-pointer" title="Pack uniforms into CBUFFER_START(UnityPerMaterial)">
+            <label className="flex items-center space-x-1 cursor-pointer" title="Pack uniforms into CBUFFER_START(UnityPerMaterial)">
               <input
                 type="checkbox"
                 checked={srpBatcher}
                 onChange={(e) => setSrpBatcher(e.target.checked)}
-                className="w-3.5 h-3.5 rounded bg-[#0A0C0F] border-[#1E232E] text-indigo-600 focus:ring-0 cursor-pointer"
+                className="w-3 h-3 rounded bg-[#0A0C0F] border-[#1E232E] text-indigo-600 focus:ring-0 cursor-pointer"
               />
-              <span className="text-[11px] text-slate-300 font-medium">SRP Batcher</span>
+              <span className="text-[10.5px] text-slate-300 font-medium">SRP Batcher</span>
             </label>
 
             {/* Shadow Pass Toggle */}
-            <label className="flex items-center space-x-1.5 cursor-pointer" title="Include / exclude ShadowCaster pass">
+            <label className="flex items-center space-x-1 cursor-pointer" title="Include / exclude ShadowCaster pass">
               <input
                 type="checkbox"
                 checked={generateShadowCaster}
                 onChange={(e) => setGenerateShadowCaster(e.target.checked)}
-                className="w-3.5 h-3.5 rounded bg-[#0A0C0F] border-[#1E232E] text-indigo-600 focus:ring-0 cursor-pointer"
+                className="w-3 h-3 rounded bg-[#0A0C0F] border-[#1E232E] text-indigo-600 focus:ring-0 cursor-pointer"
               />
-              <span className="text-[11px] text-slate-300 font-medium">Shadow Pass</span>
+              <span className="text-[10.5px] text-slate-300 font-medium">Shadow Pass</span>
             </label>
 
             {/* Texture Remapping / Sampler Toggle */}
             {conversionMode === 'builtin_to_urp' ? (
-              <label className="flex items-center space-x-1.5 cursor-pointer">
+              <label className="flex items-center space-x-1 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={remapLegacyTextureNames}
                   onChange={(e) => setRemapLegacyTextureNames(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded bg-[#0A0C0F] border-[#1E232E] text-indigo-600 focus:ring-0 cursor-pointer"
+                  className="w-3 h-3 rounded bg-[#0A0C0F] border-[#1E232E] text-indigo-600 focus:ring-0 cursor-pointer"
                 />
-                <span className="text-[11px] text-slate-300 font-medium">_MainTex ➔ _BaseMap</span>
+                <span className="text-[10.5px] text-slate-300 font-medium">_MainTex ➔ _BaseMap</span>
               </label>
             ) : (
-              <label className="flex items-center space-x-1.5 cursor-pointer">
+              <label className="flex items-center space-x-1 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={samplerSeparation}
                   onChange={(e) => setSamplerSeparation(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded bg-[#0A0C0F] border-[#1E232E] text-indigo-600 focus:ring-0 cursor-pointer"
+                  className="w-3 h-3 rounded bg-[#0A0C0F] border-[#1E232E] text-indigo-600 focus:ring-0 cursor-pointer"
                 />
-                <span className="text-[11px] text-slate-300 font-medium">Texture2D + Sampler</span>
+                <span className="text-[10.5px] text-slate-300 font-medium">Texture2D + Sampler</span>
               </label>
             )}
 
             {/* SRP Batcher Status Badge */}
             {transpileResult?.srpBatcherCompliant ? (
-              <span className="text-[10px] font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3" /> SRP Batcher 100%
+              <span className="text-[9.5px] font-medium text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded-full border border-emerald-500/20 flex items-center gap-1">
+                <CheckCircle2 className="w-2.5 h-2.5" /> SRP Batcher 100%
               </span>
             ) : (
-              <span className="text-[10px] font-medium text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 flex items-center gap-1">
-                <Info className="w-3 h-3" /> CBUFFER Ready
+              <span className="text-[9.5px] font-medium text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded-full border border-amber-500/20 flex items-center gap-1">
+                <Info className="w-2.5 h-2.5" /> CBUFFER Ready
               </span>
             )}
           </div>
@@ -606,6 +643,7 @@ ${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`)
             code={sourceCode}
             onChange={setSourceCode}
             onOpenSnippetLibrary={() => setIsSnippetLibraryOpen(true)}
+            themeId={editorThemeId}
             title={conversionMode === 'builtin_to_urp' 
               ? 'Source: Unity Built-in RP' 
               : 'Source: OpenGL / GLSL'}
@@ -623,12 +661,12 @@ ${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`)
         }`}>
           
           {/* Header with Navigation Tabs & Layout Switches */}
-          <div className="bg-[#161920] px-3 py-1.5 border-b border-[#1E232E] flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center space-x-1 overflow-x-auto scrollbar-none py-0.5">
+          <div className="bg-[#161920] px-2.5 py-1 border-b border-[#1E232E] flex flex-wrap items-center justify-between gap-1.5 min-h-[34px]">
+            <div className="flex items-center space-x-1 overflow-x-auto scrollbar-none py-0.2">
               <button
                 id="view-tab-code"
                 onClick={() => setViewMode('code')}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition cursor-pointer whitespace-nowrap ${
+                className={`px-2 py-0.5 rounded text-[11px] font-medium transition cursor-pointer whitespace-nowrap ${
                   viewMode === 'code'
                     ? 'bg-indigo-600/20 text-indigo-300 font-semibold border border-indigo-500/30'
                     : 'text-slate-400 hover:text-slate-200'
@@ -640,16 +678,16 @@ ${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`)
               <button
                 id="view-tab-changed-only"
                 onClick={() => setViewMode('changed_only')}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                className={`px-2 py-0.5 rounded text-[11px] font-medium transition flex items-center gap-1 cursor-pointer whitespace-nowrap ${
                   viewMode === 'changed_only'
                     ? 'bg-indigo-600 text-white font-semibold shadow-xs'
                     : 'text-indigo-400 hover:text-indigo-200 bg-indigo-500/10 border border-indigo-500/20'
                 }`}
                 title="View only the converted HLSL functions, CBUFFER, texture samplers, and AST diffs"
               >
-                <GitCompare className="w-3.5 h-3.5" />
-                <span>Changed Parts</span>
-                <span className={`px-1.5 py-0.2 text-[10px] rounded-full font-mono font-bold ${
+                <GitCompare className="w-3 h-3" />
+                <span>Changed</span>
+                <span className={`px-1 py-0.1 text-[9px] rounded-full font-mono font-bold ${
                   viewMode === 'changed_only' ? 'bg-indigo-800 text-indigo-100' : 'bg-indigo-500/20 text-indigo-300'
                 }`}>
                   {transpileResult?.changedParts.length || 0}
@@ -659,15 +697,15 @@ ${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`)
               <button
                 id="view-tab-performance"
                 onClick={() => setViewMode('performance')}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                className={`px-2 py-0.5 rounded text-[11px] font-medium transition flex items-center gap-1 cursor-pointer whitespace-nowrap ${
                   viewMode === 'performance'
                     ? 'bg-indigo-600/20 text-indigo-300 font-semibold border border-indigo-500/30'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <Gauge className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                <Gauge className="w-3 h-3 text-indigo-400 shrink-0" />
                 <span>Profiler</span>
-                <span className={`px-1.5 py-0.2 text-[10px] rounded-full font-mono font-bold shrink-0 ${
+                <span className={`px-1 py-0.1 text-[9px] rounded-full font-mono font-bold shrink-0 ${
                   (transpileResult?.performance?.srpBatcher.score || 0) >= 80 
                     ? 'bg-emerald-500/20 text-emerald-300' 
                     : 'bg-amber-500/20 text-amber-300'
@@ -679,14 +717,14 @@ ${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`)
               <button
                 id="view-tab-properties"
                 onClick={() => setViewMode('properties')}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition flex items-center gap-1 cursor-pointer whitespace-nowrap ${
+                className={`px-2 py-0.5 rounded text-[11px] font-medium transition flex items-center gap-1 cursor-pointer whitespace-nowrap ${
                   viewMode === 'properties'
                     ? 'bg-indigo-600/20 text-indigo-300 font-semibold border border-indigo-500/30'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 <span>Properties</span>
-                <span className="px-1.5 py-0.2 bg-[#0E1013] text-[10px] rounded-full text-slate-400">
+                <span className="px-1 py-0.1 bg-[#0E1013] text-[9px] rounded-full text-slate-400">
                   {transpileResult?.properties.length || 0}
                 </span>
               </button>
@@ -694,53 +732,53 @@ ${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`)
               <button
                 id="view-tab-annotations"
                 onClick={() => setViewMode('annotations')}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition flex items-center gap-1 cursor-pointer whitespace-nowrap ${
+                className={`px-2 py-0.5 rounded text-[11px] font-medium transition flex items-center gap-1 cursor-pointer whitespace-nowrap ${
                   viewMode === 'annotations'
                     ? 'bg-indigo-600/20 text-indigo-300 font-semibold border border-indigo-500/30'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 <span>AST Log</span>
-                <span className="px-1.5 py-0.2 bg-[#0E1013] text-[10px] rounded-full text-slate-400">
+                <span className="px-1 py-0.1 bg-[#0E1013] text-[9px] rounded-full text-slate-400">
                   {transpileResult?.annotations.length || 0}
                 </span>
               </button>
             </div>
 
             {/* Actions: Layout Controls + 3D Preview + Copy + Format + Download */}
-            <div className="flex items-center space-x-1.5 shrink-0">
+            <div className="flex items-center space-x-1 shrink-0">
               
               {/* Layout Width Toggles */}
-              <div className="hidden sm:inline-flex items-center bg-[#0A0C0F] border border-[#1E232E] rounded-md p-0.5 mr-1" title="Adjust Editor Widths">
+              <div className="hidden sm:inline-flex items-center bg-[#0A0C0F] border border-[#1E232E] rounded p-0.5 mr-0.5" title="Adjust Editor Widths">
                 <button
                   id="btn-layout-split"
                   onClick={() => setLayoutMode('split')}
-                  className={`p-1 rounded text-xs transition cursor-pointer ${
+                  className={`p-0.5 rounded text-xs transition cursor-pointer ${
                     layoutMode === 'split' ? 'bg-indigo-600/30 text-indigo-300' : 'text-slate-400 hover:text-slate-200'
                   }`}
                   title="50/50 Dual Split"
                 >
-                  <Columns className="w-3.5 h-3.5" />
+                  <Columns className="w-3 h-3" />
                 </button>
                 <button
                   id="btn-layout-wide"
                   onClick={() => setLayoutMode('wide')}
-                  className={`p-1 rounded text-xs transition cursor-pointer ${
+                  className={`p-0.5 rounded text-xs transition cursor-pointer ${
                     layoutMode === 'wide' ? 'bg-indigo-600/30 text-indigo-300' : 'text-slate-400 hover:text-slate-200'
                   }`}
                   title="Wide Target (65% width)"
                 >
-                  <Sidebar className="w-3.5 h-3.5 rotate-180" />
+                  <Sidebar className="w-3 h-3 rotate-180" />
                 </button>
                 <button
                   id="btn-layout-full"
                   onClick={() => setLayoutMode('full')}
-                  className={`p-1 rounded text-xs transition cursor-pointer ${
+                  className={`p-0.5 rounded text-xs transition cursor-pointer ${
                     layoutMode === 'full' ? 'bg-indigo-600/30 text-indigo-300' : 'text-slate-400 hover:text-slate-200'
                   }`}
                   title="Maximize Target (100% full width)"
                 >
-                  <Maximize2 className="w-3.5 h-3.5" />
+                  <Maximize2 className="w-3 h-3" />
                 </button>
               </div>
 
@@ -751,52 +789,62 @@ ${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`)
                     onPreviewShader(sourceCode, targetPipeline);
                   }
                 }}
-                className="flex items-center space-x-1 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-md shadow-xs transition cursor-pointer"
+                className="flex items-center space-x-1 px-2 py-0.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-semibold rounded shadow-xs transition cursor-pointer"
                 title="Send active shader to 3D Preview (real-time WebGL rendering)"
               >
-                <Compass className="w-3.5 h-3.5" />
+                <Compass className="w-3 h-3" />
                 <span className="hidden sm:inline">3D View</span>
               </button>
 
               <button
                 id="btn-format-converted-code"
                 onClick={handleFormatConvertedCode}
-                className="flex items-center space-x-1 px-2 py-1 bg-[#161920] hover:bg-[#1E232E] text-slate-300 text-xs font-medium rounded-md border border-[#1E232E] transition cursor-pointer"
+                className="flex items-center space-x-1 px-1.5 py-0.5 bg-[#161920] hover:bg-[#1E232E] text-slate-300 text-[11px] font-medium rounded border border-[#1E232E] transition cursor-pointer"
                 title="Format HLSL code"
               >
-                {formattedSuccess ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <AlignLeft className="w-3.5 h-3.5 text-indigo-400" />}
+                {formattedSuccess ? <Check className="w-3 h-3 text-emerald-400" /> : <AlignLeft className="w-3 h-3 text-indigo-400" />}
                 <span className="hidden md:inline">{formattedSuccess ? 'Formatted' : 'Format'}</span>
               </button>
 
               <button
                 id="btn-copy-code"
                 onClick={handleCopyCode}
-                className="flex items-center space-x-1 px-2 py-1 bg-[#161920] hover:bg-[#1E232E] text-slate-300 text-xs font-medium rounded-md border border-[#1E232E] transition cursor-pointer"
+                className="flex items-center space-x-1 px-1.5 py-0.5 bg-[#161920] hover:bg-[#1E232E] text-slate-300 text-[11px] font-medium rounded border border-[#1E232E] transition cursor-pointer"
               >
-                {copiedCode ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedCode ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                 <span>{copiedCode ? 'Copied' : 'Copy'}</span>
+              </button>
+
+              <button
+                id="btn-open-unity-export-modal"
+                onClick={() => setIsUnityExportOpen(true)}
+                className="flex items-center space-x-1 px-2 py-0.5 bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 hover:from-emerald-500/30 hover:to-cyan-500/30 text-emerald-300 hover:text-white text-[11px] font-semibold rounded border border-emerald-500/40 transition cursor-pointer shadow-xs"
+                title="Export ready-to-import Unity .shader file with custom Unity GUID and .meta companion"
+              >
+                <Box className="w-3 h-3 text-emerald-400" />
+                <span>Export .shader &amp; GUID</span>
               </button>
 
               <button
                 id="btn-download-file"
                 onClick={handleDownloadFile}
-                className="flex items-center space-x-1 px-2 py-1 bg-[#161920] hover:bg-[#1E232E] text-slate-300 text-xs font-medium rounded-md border border-[#1E232E] transition cursor-pointer"
+                className="flex items-center space-x-1 px-1.5 py-0.5 bg-[#161920] hover:bg-[#1E232E] text-slate-300 text-[11px] font-medium rounded border border-[#1E232E] transition cursor-pointer"
               >
-                <Download className="w-3.5 h-3.5" />
+                <Download className="w-3 h-3" />
                 <span className="hidden sm:inline">Download</span>
               </button>
             </div>
           </div>
 
           {/* Body Content based on View Mode */}
-          <div className="relative flex-1 min-h-[460px] overflow-hidden bg-[#0A0C0E]">
+          <div className="relative flex-1 min-h-[440px] overflow-hidden bg-[#0A0C0E]">
             {viewMode === 'code' && (
               <div className="h-full flex flex-col min-h-0">
                 {/* Switcher Banner to Changed Parts */}
-                <div className="bg-[#12151B] border-b border-[#23272F] px-3.5 py-1.5 flex items-center justify-between text-xs text-slate-300">
-                  <span className="flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Complete {targetPipeline.toUpperCase()} ShaderLab File ({transpileResult?.convertedCode.split('\n').length || 0} lines)</span>
+                <div className="bg-[#12151B] border-b border-[#23272F] px-2.5 py-1 flex items-center justify-between text-[11px] text-slate-300">
+                  <span className="flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                    <span>Complete {targetPipeline.toUpperCase()} ShaderLab ({transpileResult?.convertedCode.split('\n').length || 0} lines)</span>
                   </span>
                   <button
                     onClick={() => setViewMode('changed_only')}
@@ -809,6 +857,14 @@ ${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`)
                 <div className="flex-1 min-h-0">
                   <HLSLCodeViewer 
                     code={transpileResult?.convertedCode || '// Compiling...'} 
+                    onChange={handleTargetHlslChange}
+                    isManuallyEdited={isHlslManuallyEdited}
+                    onRevert={handleRevertTargetHlsl}
+                    onOpenBatchingAssistant={() => setIsBatchingAssistantOpen(true)}
+                    onOpenUnityExport={() => setIsUnityExportOpen(true)}
+                    batchingProposalsCount={batchingReport.totalProposals}
+                    themeId={editorThemeId}
+                    onThemeChange={setEditorThemeId}
                   />
                 </div>
               </div>
@@ -834,6 +890,7 @@ ${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`)
                   estimation={transpileResult?.performance}
                   hlslCode={transpileResult?.convertedCode || ''}
                   isEmbedded={true}
+                  onOpenBatchingAssistant={() => setIsBatchingAssistantOpen(true)}
                 />
               </div>
             )}
@@ -923,6 +980,25 @@ ${transpileResult.shaderGraphNode.outputs.map(o => `   - ${o.name} (${o.type})`)
         onClose={() => setIsSnippetLibraryOpen(false)}
         activeSourceCode={sourceCode}
         onInsertCode={handleInsertSnippetCode}
+      />
+
+      {/* Automated SRP Batching Assistant Modal */}
+      <BatchingAssistantModal
+        isOpen={isBatchingAssistantOpen}
+        onClose={() => setIsBatchingAssistantOpen(false)}
+        currentHlslCode={transpileResult?.convertedCode || ''}
+        onApplyRefactoredCode={handleApplyBatchingAssistantCode}
+      />
+
+      {/* Unity Shader & GUID Project Export Modal */}
+      <UnityExportModal
+        isOpen={isUnityExportOpen}
+        onClose={() => setIsUnityExportOpen(false)}
+        shaderCode={transpileResult?.convertedCode || ''}
+        targetPipeline={targetPipeline}
+        unityVersion={unityVersion}
+        properties={transpileResult?.properties || []}
+        onUpdateShaderCode={handleTargetHlslChange}
       />
 
     </div>

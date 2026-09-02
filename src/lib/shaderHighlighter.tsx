@@ -1,4 +1,5 @@
 import React from 'react';
+import { getEditorTheme, EditorTheme } from './shaderEditorThemes';
 
 export type TokenType =
   | 'comment'
@@ -466,12 +467,18 @@ export function tokenizeLine(line: string): CodeToken[] {
 }
 
 /**
- * Returns the Tailwind CSS classes for a given token type.
+ * Returns the Tailwind CSS classes for a given token type based on active theme.
  */
-export function getTokenClasses(type: TokenType): string {
+export function getTokenClasses(type: TokenType, themeOrId?: string | EditorTheme): string {
+  const theme = typeof themeOrId === 'object' && themeOrId ? themeOrId : getEditorTheme(typeof themeOrId === 'string' ? themeOrId : undefined);
+  if (theme && theme.tokenClasses && theme.tokenClasses[type]) {
+    return theme.tokenClasses[type];
+  }
+
+  // Fallback defaults
   switch (type) {
     case 'structural':
-      return 'text-fuchsia-400 font-semibold';
+      return 'text-rose-400 font-bold';
     case 'preprocessor':
       return 'text-pink-400 font-medium';
     case 'keyword':
@@ -479,15 +486,15 @@ export function getTokenClasses(type: TokenType): string {
     case 'type':
       return 'text-cyan-300 font-medium';
     case 'semantic':
-      return 'text-orange-300 font-mono font-medium';
+      return 'text-orange-400 font-mono font-medium';
     case 'srp-function':
-      return 'text-indigo-300 font-medium';
+      return 'text-indigo-300 font-semibold';
     case 'uniform':
-      return 'text-emerald-400 font-medium';
+      return 'text-emerald-300 font-medium';
     case 'string':
       return 'text-lime-300';
     case 'number':
-      return 'text-sky-300';
+      return 'text-sky-300 font-mono';
     case 'comment':
       return 'text-slate-500 italic';
     case 'operator':
@@ -570,3 +577,217 @@ export function extractLandmarks(code: string): CodeLandmark[] {
 
   return landmarks;
 }
+
+/**
+ * Identifies collapsible boilerplate regions in Unity HLSL / ShaderLab
+ */
+export interface FoldableBoilerplateBlock {
+  id: string;
+  label: string;
+  startLine: number; // 1-indexed
+  endLine: number;   // 1-indexed
+  category: 'properties' | 'tags_renderstate' | 'pragmas_includes' | 'cbuffer' | 'vertex_pass_through' | 'header_comments';
+  summary: string;
+}
+
+export function detectBoilerplateBlocks(code: string): FoldableBoilerplateBlock[] {
+  const lines = code.split('\n');
+  const blocks: FoldableBoilerplateBlock[] = [];
+  const n = lines.length;
+
+  let inProperties = false;
+  let propertiesStart = -1;
+  let propertiesDepth = 0;
+
+  let inCbuffer = false;
+  let cbufferStart = -1;
+
+  let inIncludesPragmas = false;
+  let includesStart = -1;
+
+  let inTagsState = false;
+  let tagsStateStart = -1;
+  let tagsDepth = 0;
+
+  // 1. Scan for header comment block at top of file
+  let topCommentEnd = -1;
+  let inTopComment = false;
+  for (let i = 0; i < Math.min(n, 25); i++) {
+    const trimmed = lines[i].trim();
+    if (i === 0 && (trimmed.startsWith('//') || trimmed.startsWith('/*'))) {
+      inTopComment = true;
+    }
+    if (inTopComment) {
+      if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*') || trimmed.endsWith('*/') || trimmed === '') {
+        topCommentEnd = i;
+      } else {
+        break;
+      }
+    }
+  }
+  if (topCommentEnd >= 2) {
+    blocks.push({
+      id: 'block-header-comments',
+      label: 'File Header & License/Migration Info',
+      startLine: 1,
+      endLine: topCommentEnd + 1,
+      category: 'header_comments',
+      summary: `// ${topCommentEnd + 1} lines of header comments & metadata`,
+    });
+  }
+
+  // Helper to find matching brace block
+  const findMatchingBrace = (startIndex: number): number => {
+    let depth = 0;
+    let foundOpen = false;
+    for (let j = startIndex; j < n; j++) {
+      const l = lines[j];
+      for (let k = 0; k < l.length; k++) {
+        if (l[k] === '{') {
+          depth++;
+          foundOpen = true;
+        } else if (l[k] === '}') {
+          depth--;
+          if (foundOpen && depth === 0) {
+            return j;
+          }
+        }
+      }
+    }
+    return -1;
+  };
+
+  for (let i = 0; i < n; i++) {
+    const line = lines[i].trim();
+
+    // 2. Properties { ... }
+    if (/^Properties\s*\{?/i.test(line) && !inProperties) {
+      const end = findMatchingBrace(i);
+      if (end > i + 1) {
+        blocks.push({
+          id: `block-properties-${i}`,
+          label: 'Properties { ... } Block',
+          startLine: i + 1,
+          endLine: end + 1,
+          category: 'properties',
+          summary: `Properties { ... } (${end - i + 1} lines)`,
+        });
+        i = end;
+        continue;
+      }
+    }
+
+    // 3. Tags & Render State inside SubShader or Pass
+    if (/^Tags\s*\{/i.test(line)) {
+      const end = findMatchingBrace(i);
+      if (end > i) {
+        // Also capture adjacent render states (ZWrite, Blend, Cull, etc.)
+        let stateEnd = end;
+        while (stateEnd + 1 < n) {
+          const nextTrimmed = lines[stateEnd + 1].trim();
+          if (/^(ZWrite|ZTest|Blend|BlendOp|Cull|ColorMask|LOD)\b/i.test(nextTrimmed)) {
+            stateEnd++;
+          } else {
+            break;
+          }
+        }
+        if (stateEnd > i + 1) {
+          blocks.push({
+            id: `block-tags-${i}`,
+            label: 'Tags & Render State Setup',
+            startLine: i + 1,
+            endLine: stateEnd + 1,
+            category: 'tags_renderstate',
+            summary: `Tags & Render States (${stateEnd - i + 1} lines)`,
+          });
+          i = stateEnd;
+          continue;
+        }
+      }
+    }
+
+    // 4. Consecutive Pragmas & Includes block
+    if ((/^#pragma\s+/i.test(line) || /^#include\s+/i.test(line) || /^#define\s+/i.test(line)) && !inIncludesPragmas) {
+      const startIdx = i;
+      let endIdx = i;
+      while (endIdx + 1 < n) {
+        const nextTrimmed = lines[endIdx + 1].trim();
+        if (/^#(pragma|include|define|undef|ifdef|ifndef|endif|else|elif)\b/i.test(nextTrimmed) || nextTrimmed.startsWith('//') || nextTrimmed === '') {
+          // If blank line, only consume if followed by another directive
+          if (nextTrimmed === '') {
+            if (endIdx + 2 < n && /^#(pragma|include|define)/i.test(lines[endIdx + 2].trim())) {
+              endIdx++;
+              continue;
+            } else {
+              break;
+            }
+          }
+          endIdx++;
+        } else {
+          break;
+        }
+      }
+      if (endIdx - startIdx >= 2) {
+        blocks.push({
+          id: `block-includes-${startIdx}`,
+          label: '#pragma Directives & Core Library #includes',
+          startLine: startIdx + 1,
+          endLine: endIdx + 1,
+          category: 'pragmas_includes',
+          summary: `#pragma directives & #include libraries (${endIdx - startIdx + 1} lines)`,
+        });
+        i = endIdx;
+        continue;
+      }
+    }
+
+    // 5. CBUFFER_START(UnityPerMaterial) ... CBUFFER_END
+    if (/^CBUFFER_START\(([^)]+)\)/i.test(line)) {
+      const match = line.match(/^CBUFFER_START\(([^)]+)\)/i);
+      const cbName = match ? match[1] : 'UnityPerMaterial';
+      let endIdx = -1;
+      for (let j = i + 1; j < n; j++) {
+        if (/^CBUFFER_END/i.test(lines[j].trim())) {
+          endIdx = j;
+          break;
+        }
+      }
+      if (endIdx > i + 1) {
+        blocks.push({
+          id: `block-cbuffer-${i}`,
+          label: `CBUFFER_START(${cbName}) ... CBUFFER_END`,
+          startLine: i + 1,
+          endLine: endIdx + 1,
+          category: 'cbuffer',
+          summary: `CBUFFER_START(${cbName}) [${endIdx - i + 1} lines]`,
+        });
+        i = endIdx;
+        continue;
+      }
+    }
+
+    // 6. Standard boilerplate Vertex function pass-through
+    if (/(Varyings|v2f)\s+(vert|vertex)\s*\(/i.test(line)) {
+      const end = findMatchingBrace(i);
+      if (end > i + 1) {
+        const body = lines.slice(i, end + 1).join('\n');
+        // If it only does standard TransformObjectToHClip or TransformObjectToWorld
+        if (body.includes('TransformObjectToHClip') && !body.includes('sin(') && !body.includes('cos(') && !body.includes('noise')) {
+          blocks.push({
+            id: `block-vert-${i}`,
+            label: 'Standard Passthrough Vertex Function',
+            startLine: i + 1,
+            endLine: end + 1,
+            category: 'vertex_pass_through',
+            summary: `Standard vert() vertex transformation (${end - i + 1} lines)`,
+          });
+          i = end;
+          continue;
+        }
+      }
+    }
+  }
+
+  return blocks;
+}
+

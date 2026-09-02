@@ -40,6 +40,7 @@ interface PerformanceImpactEstimatorProps {
   hlslCode?: string;
   onApplyOptimization?: (optimizedCode: string) => void;
   isEmbedded?: boolean;
+  onOpenBatchingAssistant?: () => void;
 }
 
 const PERFORMANCE_TEST_PRESETS = [
@@ -278,6 +279,7 @@ export const PerformanceImpactEstimator: React.FC<PerformanceImpactEstimatorProp
   hlslCode = '',
   onApplyOptimization,
   isEmbedded = false,
+  onOpenBatchingAssistant,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'srp' | 'variants' | 'gpu' | 'recommendations'>('srp');
   const [customHlsl, setCustomHlsl] = useState<string>(hlslCode || PERFORMANCE_TEST_PRESETS[0].code);
@@ -607,6 +609,17 @@ export const PerformanceImpactEstimator: React.FC<PerformanceImpactEstimatorProp
             <span className="truncate">Draw Call Overhead:</span>
             <span className="text-emerald-400 font-medium shrink-0">{srpBatcher.estimatedDrawCallReduction}</span>
           </div>
+
+          {onOpenBatchingAssistant && (
+            <button
+              id="btn-open-batching-assistant-from-card"
+              onClick={onOpenBatchingAssistant}
+              className="mt-2.5 w-full flex items-center justify-center gap-1.5 py-1 px-2.5 bg-gradient-to-r from-amber-500/20 to-indigo-500/20 hover:from-amber-500/30 hover:to-indigo-500/30 text-amber-300 hover:text-white rounded-md border border-amber-500/30 text-[11px] font-semibold transition cursor-pointer"
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-400" />
+              <span>Launch Batching Assistant</span>
+            </button>
+          )}
         </div>
 
         {/* CARD 2: Shader Variants Multiplier */}

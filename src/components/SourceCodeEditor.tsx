@@ -4,6 +4,10 @@ import {
   getTokenClasses 
 } from '../lib/shaderHighlighter';
 import { 
+  getEditorTheme, 
+  DEFAULT_THEME_ID 
+} from '../lib/shaderEditorThemes';
+import { 
   Code, 
   Edit3, 
   Copy, 
@@ -21,6 +25,7 @@ interface SourceCodeEditorProps {
   placeholder?: string;
   title: string;
   onOpenSnippetLibrary?: () => void;
+  themeId?: string;
 }
 
 export const SourceCodeEditor: React.FC<SourceCodeEditorProps> = ({
@@ -29,11 +34,14 @@ export const SourceCodeEditor: React.FC<SourceCodeEditorProps> = ({
   placeholder,
   title,
   onOpenSnippetLibrary,
+  themeId = DEFAULT_THEME_ID,
 }) => {
   const [viewMode, setViewMode] = useState<'edit' | 'highlight'>('edit');
   const [copied, setCopied] = useState<boolean>(false);
   const [wordWrap, setWordWrap] = useState<boolean>(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const activeTheme = useMemo(() => getEditorTheme(themeId), [themeId]);
 
   const lines = useMemo(() => {
     return code.split('\n');
@@ -55,13 +63,16 @@ export const SourceCodeEditor: React.FC<SourceCodeEditorProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#0A0C0E] text-slate-200">
+    <div 
+      className="flex flex-col h-full text-slate-200 transition-colors"
+      style={{ backgroundColor: activeTheme.colors.bg }}
+    >
       
       {/* Header bar */}
-      <div className="bg-[#1A1D21] px-3.5 py-1.5 border-b border-[#23272F] flex items-center justify-between gap-2 shrink-0">
+      <div className="bg-[#14171E] px-3 py-1 border-b border-[#202530] flex items-center justify-between gap-2 shrink-0 min-h-[34px]">
         <div className="flex items-center space-x-2 min-w-0">
-          <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0"></span>
-          <span className="font-mono text-xs font-medium text-slate-200 truncate">
+          <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0"></span>
+          <span className="font-mono text-[11px] font-semibold text-slate-200 truncate">
             {title}
           </span>
         </div>
@@ -72,8 +83,8 @@ export const SourceCodeEditor: React.FC<SourceCodeEditorProps> = ({
             <button
               id="btn-open-snippet-library-editor"
               onClick={onOpenSnippetLibrary}
-              className="flex items-center space-x-1 px-2 py-0.5 rounded bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-[11px] font-medium transition cursor-pointer mr-1 shadow-xs"
-              title="Browse, insert, and save GLSL shader snippets (Noise, SDF, Blending, Color math)"
+              className="flex items-center space-x-1 px-1.5 py-0.5 rounded bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[10px] font-medium transition cursor-pointer"
+              title="Browse, insert, and save GLSL shader snippets"
             >
               <Sparkles className="w-3 h-3 text-indigo-400" />
               <span>Snippets</span>
@@ -81,56 +92,56 @@ export const SourceCodeEditor: React.FC<SourceCodeEditorProps> = ({
           )}
 
           {/* Edit / Highlight Toggle */}
-          <div className="inline-flex items-center bg-[#0E1013] border border-[#23272F] rounded p-0.5 mr-1">
+          <div className="inline-flex items-center bg-[#0C0E12] border border-[#1E232E] rounded p-0.5">
             <button
               onClick={() => setViewMode('edit')}
               className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition cursor-pointer ${
-                viewMode === 'edit' ? 'bg-indigo-600/30 text-indigo-300 font-medium' : 'text-slate-400 hover:text-slate-200'
+                viewMode === 'edit' ? 'bg-indigo-600 text-white font-medium shadow-xs' : 'text-slate-400 hover:text-slate-200'
               }`}
               title="Interactive Source Editor"
             >
-              <Edit3 className="w-3 h-3" />
+              <Edit3 className="w-2.5 h-2.5" />
               <span>Edit</span>
             </button>
             <button
               onClick={() => setViewMode('highlight')}
               className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition cursor-pointer ${
-                viewMode === 'highlight' ? 'bg-indigo-600/30 text-indigo-300 font-medium' : 'text-slate-400 hover:text-slate-200'
+                viewMode === 'highlight' ? 'bg-indigo-600 text-white font-medium shadow-xs' : 'text-slate-400 hover:text-slate-200'
               }`}
               title="Syntax Highlighted View"
             >
-              <Code className="w-3 h-3" />
+              <Code className="w-2.5 h-2.5" />
               <span>Highlight</span>
             </button>
           </div>
 
           <button
             onClick={() => setWordWrap(!wordWrap)}
-            className={`p-1 rounded text-xs transition cursor-pointer ${
-              wordWrap ? 'bg-indigo-600/30 text-indigo-300' : 'text-slate-400 hover:text-slate-200'
+            className={`p-1 rounded text-[10px] transition cursor-pointer ${
+              wordWrap ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30' : 'text-slate-400 hover:text-slate-200 hover:bg-[#1C2029]'
             }`}
             title="Toggle Word Wrap"
           >
-            <WrapText className="w-3.5 h-3.5" />
+            <WrapText className="w-3 h-3" />
           </button>
 
           <button
             onClick={handleCopy}
-            className="p-1 rounded text-slate-400 hover:text-slate-200 transition cursor-pointer"
+            className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-[#1C2029] transition cursor-pointer"
             title="Copy Source Code"
           >
-            {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+            {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
           </button>
 
           <button
             onClick={handleClear}
-            className="p-1 rounded text-slate-400 hover:text-rose-400 transition cursor-pointer"
+            className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-[#1C2029] transition cursor-pointer"
             title="Clear Source Code"
           >
-            <Trash2 className="w-3.5 h-3.5" />
+            <Trash2 className="w-3 h-3" />
           </button>
 
-          <span className="text-[11px] text-slate-500 font-mono pl-1 flex items-center gap-0.5">
+          <span className="text-[10px] text-slate-500 font-mono pl-1 flex items-center gap-0.5">
             <Hash className="w-2.5 h-2.5" />
             {lines.length}
           </span>
@@ -138,11 +149,21 @@ export const SourceCodeEditor: React.FC<SourceCodeEditorProps> = ({
       </div>
 
       {/* Editor Body */}
-      <div className="relative flex-1 min-h-[460px] overflow-auto bg-[#0A0C0E] font-mono text-xs">
+      <div 
+        className="relative flex-1 min-h-[440px] overflow-auto font-mono text-xs transition-colors"
+        style={{ backgroundColor: activeTheme.colors.bg }}
+      >
         {viewMode === 'edit' ? (
-          <div className="flex h-full min-h-[460px]">
+          <div className="flex h-full min-h-[440px]">
             {/* Gutter with line numbers */}
-            <div className="w-10 shrink-0 py-4 select-none bg-[#0D0F13] text-right pr-3 text-slate-600 border-r border-[#1B1E26] text-[11px] font-mono leading-relaxed">
+            <div 
+              className="w-9 shrink-0 py-2.5 select-none text-right pr-2 text-[11px] font-mono leading-relaxed border-r transition-colors"
+              style={{ 
+                backgroundColor: activeTheme.colors.gutterBg,
+                borderColor: activeTheme.colors.gutterBorder,
+                color: activeTheme.colors.gutterText
+              }}
+            >
               {lines.map((_, i) => (
                 <div key={i}>{i + 1}</div>
               ))}
@@ -156,27 +177,34 @@ export const SourceCodeEditor: React.FC<SourceCodeEditorProps> = ({
               onChange={(e) => onChange(e.target.value)}
               placeholder={placeholder}
               spellCheck={false}
-              className={`flex-1 p-4 bg-[#0A0C0E] text-slate-200 font-mono text-xs leading-relaxed resize-none focus:outline-none selection:bg-indigo-500/30 border-none ${
+              style={{ 
+                backgroundColor: activeTheme.colors.bg,
+                color: '#F1F5F9'
+              }}
+              className={`flex-1 p-2.5 font-mono text-xs leading-relaxed resize-none focus:outline-none selection:bg-indigo-500/30 border-none ${
                 wordWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre overflow-x-auto'
               }`}
             />
           </div>
         ) : (
-          <div className="p-2">
+          <div className="p-1.5">
             {tokenizedLines.map((tokens, lineIdx) => (
               <div
                 key={lineIdx}
-                className="flex items-start hover:bg-[#15181E] pl-1.5 rounded-xs"
+                className="flex items-start hover:bg-[#15181E]/40 pl-1 rounded-xs"
               >
-                <div className="w-10 shrink-0 text-right pr-3 text-slate-600 select-none text-[11px] font-mono py-0.5">
+                <div 
+                  className="w-9 shrink-0 text-right pr-2 select-none text-[11px] font-mono py-0.5"
+                  style={{ color: activeTheme.colors.gutterText }}
+                >
                   {lineIdx + 1}
                 </div>
-                <div className={`flex-1 py-0.5 pr-4 ${wordWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'}`}>
+                <div className={`flex-1 py-0.5 pr-3 ${wordWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'}`}>
                   {tokens.length === 0 ? (
                     <span>&nbsp;</span>
                   ) : (
                     tokens.map((token, tokIdx) => (
-                      <span key={tokIdx} className={getTokenClasses(token.type)}>
+                      <span key={tokIdx} className={getTokenClasses(token.type, activeTheme)}>
                         {token.text}
                       </span>
                     ))
